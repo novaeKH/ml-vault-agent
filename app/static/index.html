@@ -3,10 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta
-      name="description"
-      content="Локальный ML-помощник поверх read-only Obsidian vault"
-    />
+    <meta name="description" content="Локальный ML-помощник поверх read-only Obsidian vault" />
     <title>ML Vault Agent</title>
     <link
       rel="icon"
@@ -14,6 +11,31 @@
     />
     <link rel="stylesheet" href="/vendor/katex.min.css" />
     <link rel="stylesheet" href="/styles.css?v=5" />
+    <style>
+      .message-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+      .copy-answer, .validation-badge {
+        border: 1px solid rgba(31, 91, 75, 0.18);
+        border-radius: 8px;
+        padding: 5px 9px;
+        background: rgba(246, 242, 232, 0.72);
+        color: #355348;
+        font: inherit;
+        font-size: 12px;
+      }
+      .copy-answer { cursor: pointer; }
+      .validation-badge.ok { color: #247257; }
+      .validation-badge.warning { color: #a74b43; }
+      .generation-warning {
+        margin-top: 10px;
+        padding: 9px 11px;
+        border: 1px solid rgba(167, 75, 67, 0.24);
+        border-radius: 9px;
+        background: rgba(244, 222, 218, 0.55);
+        color: #874039;
+        font-size: 13px;
+      }
+      .code-label, .copy-code, .message-sources { user-select: none; }
+    </style>
   </head>
   <body>
     <div class="app-shell">
@@ -30,108 +52,55 @@
 
         <nav class="mode-list" aria-label="Режим работы">
           <button class="mode-button active" data-mode="chat" type="button">
-            <span class="mode-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24">
-                <path d="M5 6h14v10H9l-4 3V6Z" />
-              </svg>
-            </span>
+            <span class="mode-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 6h14v10H9l-4 3V6Z" /></svg></span>
             <b>Chat</b>
           </button>
           <button class="mode-button" data-mode="tutor" type="button">
-            <span class="mode-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24">
-                <path d="M6 5h12v14H6zM9 9h6M9 12h6M9 15h4" />
-              </svg>
-            </span>
+            <span class="mode-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 5h12v14H6zM9 9h6M9 12h6M9 15h4" /></svg></span>
             <b>Tutor</b>
           </button>
           <button class="mode-button" data-mode="interviewer" type="button">
-            <span class="mode-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24">
-                <circle cx="12" cy="9" r="3.5" />
-                <path d="M5.5 20c.8-3.4 3-5.2 6.5-5.2s5.7 1.8 6.5 5.2" />
-              </svg>
-            </span>
+            <span class="mode-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="9" r="3.5" /><path d="M5.5 20c.8-3.4 3-5.2 6.5-5.2s5.7 1.8 6.5 5.2" /></svg></span>
             <b>Interviewer</b>
           </button>
           <button class="mode-button" data-mode="practice" type="button">
-            <span class="mode-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24">
-                <path d="M7 4h10v4H7zM5 8h14v12H5zM9 12h6M9 16h4" />
-              </svg>
-            </span>
+            <span class="mode-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 4h10v4H7zM5 8h14v12H5zM9 12h6M9 16h4" /></svg></span>
             <b>Practice</b>
           </button>
           <button class="mode-button" data-mode="code" type="button">
-            <span class="mode-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24">
-                <path d="m9 7-5 5 5 5M15 7l5 5-5 5" />
-              </svg>
-            </span>
+            <span class="mode-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 7-5 5 5 5M15 7l5 5-5 5" /></svg></span>
             <b>Code Tutor</b>
+          </button>
+          <button class="mode-button" data-mode="code_builder" type="button">
+            <span class="mode-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9l-2 3 2 3M12 15h5" /></svg></span>
+            <b>Code Builder</b>
           </button>
         </nav>
 
         <div class="sidebar-spacer"></div>
-
         <section class="vault-card">
-          <div class="vault-card-heading">
-            <span class="status-dot" id="vault-dot"></span>
-            <span>База знаний</span>
-          </div>
+          <div class="vault-card-heading"><span class="status-dot" id="vault-dot"></span><span>База знаний</span></div>
           <strong id="vault-name">Поиск vault…</strong>
           <p id="index-summary">Индекс ещё не готов</p>
-          <div class="index-progress hidden" id="index-progress">
-            <span></span>
-          </div>
-          <button class="ghost-button" id="reindex-button" type="button">
-            Переиндексировать
-          </button>
+          <div class="index-progress hidden" id="index-progress"><span></span></div>
+          <button class="ghost-button" id="reindex-button" type="button">Переиндексировать</button>
         </section>
-
-        <button class="settings-button" id="settings-button" type="button">
-          <span class="button-icon" aria-hidden="true">⚙</span>
-          Настройки
-        </button>
+        <button class="settings-button" id="settings-button" type="button"><span class="button-icon" aria-hidden="true">⚙</span>Настройки</button>
       </aside>
 
       <main class="main-panel">
         <header class="topbar">
           <button class="mobile-menu" id="mobile-menu" aria-label="Открыть меню">☰</button>
           <h1 id="mode-title">Chat</h1>
-          <div class="runtime-status" id="runtime-status">
-            <span class="status-dot"></span>
-            <span>Проверка Ollama…</span>
-          </div>
+          <div class="runtime-status" id="runtime-status"><span class="status-dot"></span><span>Проверка Ollama…</span></div>
         </header>
-
         <section class="conversation" id="conversation" aria-live="polite">
-          <div class="welcome" id="welcome">
-            <div class="empty-state">
-              <span class="empty-state-mark" aria-hidden="true">ML</span>
-              <p>Новый диалог</p>
-              <small id="empty-state-meta">Подготовка индекса…</small>
-            </div>
-          </div>
+          <div class="welcome" id="welcome"><div class="empty-state"><span class="empty-state-mark" aria-hidden="true">ML</span><p>Новый диалог</p><small id="empty-state-meta">Подготовка индекса…</small></div></div>
         </section>
-
         <footer class="composer-wrap">
           <form class="composer" id="composer">
-            <textarea
-              id="message-input"
-              rows="1"
-              maxlength="20000"
-              placeholder="Спросите о ML, Python, алгоритмах или коде…"
-              aria-label="Сообщение"
-            ></textarea>
-            <div class="composer-footer">
-              <span class="composer-hint" id="composer-hint">
-                Enter · Shift+Enter для новой строки
-              </span>
-              <button class="send-button" id="send-button" type="submit" aria-label="Отправить">
-                <span>↑</span>
-              </button>
-            </div>
+            <textarea id="message-input" rows="1" maxlength="20000" placeholder="Спросите о ML, Python, алгоритмах или коде…" aria-label="Сообщение"></textarea>
+            <div class="composer-footer"><span class="composer-hint" id="composer-hint">Enter · Shift+Enter для новой строки</span><button class="send-button" id="send-button" type="submit" aria-label="Отправить"><span>↑</span></button></div>
           </form>
         </footer>
       </main>
@@ -139,88 +108,32 @@
 
     <div class="backdrop hidden" id="backdrop"></div>
     <aside class="settings-drawer" id="settings-drawer" aria-hidden="true">
-      <div class="drawer-header">
-        <h2>Настройки</h2>
-        <button class="icon-button" id="close-settings" type="button" aria-label="Закрыть">×</button>
-      </div>
-
+      <div class="drawer-header"><h2>Настройки</h2><button class="icon-button" id="close-settings" type="button" aria-label="Закрыть">×</button></div>
       <form id="settings-form">
-        <label class="field">
-          <span>Obsidian vault</span>
-          <input id="vault-path" name="vault_path" type="text" autocomplete="off" />
-          <small>Приложение только читает Markdown и хранит индекс отдельно.</small>
-        </label>
+        <label class="field"><span>Obsidian vault</span><input id="vault-path" name="vault_path" type="text" autocomplete="off" /><small>Приложение только читает Markdown и хранит индекс отдельно.</small></label>
         <div class="candidate-list" id="candidate-list"></div>
-
-        <label class="field">
-          <span>Модель ответа</span>
-          <input
-            id="chat-model"
-            name="chat_model"
-            type="text"
-            list="installed-models"
-            autocomplete="off"
-          />
-        </label>
-
-        <label class="field">
-          <span>Embedding-модель</span>
-          <input
-            id="embedding-model"
-            name="embedding_model"
-            type="text"
-            list="installed-models"
-            autocomplete="off"
-          />
-        </label>
+        <label class="field"><span>Модель ответа</span><input id="chat-model" name="chat_model" type="text" list="installed-models" autocomplete="off" /></label>
+        <label class="field"><span>Модель для Code Builder</span><input id="code-model" name="code_model" type="text" list="installed-models" autocomplete="off" /><small>На ПК рекомендуется qwen2.5-coder:14b.</small></label>
+        <label class="field"><span>Embedding-модель</span><input id="embedding-model" name="embedding_model" type="text" list="installed-models" autocomplete="off" /></label>
         <datalist id="installed-models"></datalist>
-
         <div class="field-grid">
-          <label class="field">
-            <span>Top-k</span>
-            <input id="top-k" name="top_k" type="number" min="2" max="12" />
-          </label>
-          <label class="field">
-            <span>Temperature</span>
-            <input
-              id="temperature"
-              name="temperature"
-              type="number"
-              min="0"
-              max="1.5"
-              step="0.05"
-            />
-          </label>
+          <label class="field"><span>Top-k</span><input id="top-k" name="top_k" type="number" min="2" max="12" /></label>
+          <label class="field"><span>Temperature Chat</span><input id="temperature" name="temperature" type="number" min="0" max="1.5" step="0.05" /></label>
         </div>
-
         <details class="advanced-settings">
           <summary>Дополнительно</summary>
-          <label class="field">
-            <span>Ollama URL</span>
-            <input id="ollama-url" name="ollama_url" type="text" />
-          </label>
+          <label class="field"><span>Попытки исправления кода</span><input id="code-max-attempts" name="code_max_attempts" type="number" min="1" max="3" /></label>
+          <label class="field"><span>Ollama URL</span><input id="ollama-url" name="ollama_url" type="text" /></label>
         </details>
-
-        <div class="drawer-actions">
-          <button class="primary-button" type="submit">Сохранить</button>
-          <button class="secondary-button" id="full-reindex-button" type="button">
-            Полная переиндексация
-          </button>
-        </div>
+        <div class="drawer-actions"><button class="primary-button" type="submit">Сохранить</button><button class="secondary-button" id="full-reindex-button" type="button">Полная переиндексация</button></div>
       </form>
-
-      <section class="setup-note" id="setup-note">
-        <strong>Если моделей ещё нет</strong>
-        <code>ollama pull qwen3:8b</code>
-        <code>ollama pull qwen3-embedding:0.6b</code>
-      </section>
+      <section class="setup-note" id="setup-note"><strong>Если моделей ещё нет</strong><code>ollama pull qwen3:8b</code><code>ollama pull qwen2.5-coder:14b</code><code>ollama pull qwen3-embedding:0.6b</code></section>
     </aside>
 
     <div class="toast-region" id="toast-region" aria-live="assertive"></div>
-
     <script src="/vendor/marked.min.js"></script>
     <script src="/vendor/highlight.min.js"></script>
     <script src="/vendor/katex.js"></script>
-    <script src="/app.js?v=5"></script>
+    <script src="/app.js?v=6"></script>
   </body>
 </html>
