@@ -22,5 +22,22 @@ jobs:
           cache: pip
       - name: Install project
         run: python -m pip install -e ".[dev]"
+      - name: Parse PowerShell launchers with Windows PowerShell
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          foreach ($script in @("setup.ps1", "run.ps1")) {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Join-Path $PWD $script),
+              [ref]$tokens,
+              [ref]$parseErrors
+            ) | Out-Null
+            if ($parseErrors.Count -gt 0) {
+              $parseErrors | Format-List
+              exit 1
+            }
+          }
       - name: Run tests
         run: python -m pytest

@@ -46,33 +46,33 @@ function Test-Ollama {
 
 $python = Get-CompatiblePython
 if ($null -eq $python) {
-    throw "Нужен Python 3.11–3.14. Установите Python и включите Add python.exe to PATH."
+    throw "Python 3.11-3.14 is required. Install Python and enable Add python.exe to PATH."
 }
 
 $venvPython = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path $venvPython)) {
-    Write-Host "-> Создаю локальное Python-окружение..."
+    Write-Host "-> Creating the local Python environment..."
     $pythonCommand = [string]$python.Command
     $pythonArguments = [string[]]$python.Arguments
     & $pythonCommand @pythonArguments -m venv .venv
     if ($LASTEXITCODE -ne 0) {
-        throw "Не удалось создать .venv."
+        throw "Failed to create .venv."
     }
 }
 
-Write-Host "-> Устанавливаю backend..."
+Write-Host "-> Installing the backend..."
 & $venvPython -m pip install --disable-pip-version-check -e ".[dev]"
 if ($LASTEXITCODE -ne 0) {
-    throw "Не удалось установить Python-зависимости."
+    throw "Failed to install Python dependencies."
 }
 
 if (-not $SkipModels) {
     if (-not (Get-Command "ollama" -ErrorAction SilentlyContinue)) {
-        throw "Ollama не найдена. Установите её с https://ollama.com/download/windows и повторите setup."
+        throw "Ollama was not found. Install it from https://ollama.com/download/windows and run setup again."
     }
 
     if (-not (Test-Ollama)) {
-        Write-Host "-> Запускаю Ollama..."
+        Write-Host "-> Starting Ollama..."
         Start-Process -FilePath "ollama" -ArgumentList "serve" -WindowStyle Hidden | Out-Null
         foreach ($attempt in 1..30) {
             if (Test-Ollama) {
@@ -82,19 +82,19 @@ if (-not $SkipModels) {
         }
     }
     if (-not (Test-Ollama)) {
-        throw "Ollama установлена, но локальный сервер не запустился. Откройте Ollama из меню Start и повторите setup."
+        throw "Ollama is installed, but its local server did not start. Open Ollama from the Start menu and run setup again."
     }
 
     foreach ($model in @("qwen3:8b", "qwen3-embedding:0.6b")) {
         & ollama show $model *> $null
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "OK $model уже установлена"
+            Write-Host "OK $model is already installed"
         }
         else {
-            Write-Host "-> Загружаю $model (один раз)..."
+            Write-Host "-> Downloading $model (one-time download)..."
             & ollama pull $model
             if ($LASTEXITCODE -ne 0) {
-                throw "Не удалось загрузить $model."
+                throw "Failed to download $model."
             }
         }
     }
@@ -103,17 +103,17 @@ if (-not $SkipModels) {
 if (-not $SkipIndex) {
     & $venvPython -c "from app.config import load_settings; raise SystemExit(0 if load_settings().vault_path else 1)"
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "-> Строю read-only индекс Obsidian..."
+        Write-Host "-> Building the read-only Obsidian index..."
         & $venvPython -m app.cli reindex
         if ($LASTEXITCODE -ne 0) {
-            throw "Не удалось построить индекс."
+            throw "Failed to build the index."
         }
     }
     else {
-        Write-Host "-> Vault пока не выбран. Укажите папку в web-интерфейсе после запуска."
+        Write-Host "-> No vault selected yet. Choose it in the web interface after startup."
     }
 }
 
 Write-Host ""
-Write-Host "Готово. Запуск: .\run.ps1"
-Write-Host "Затем откройте http://127.0.0.1:8787"
+Write-Host "Setup complete. Start with: .\run.ps1"
+Write-Host "Then open http://127.0.0.1:8787"
