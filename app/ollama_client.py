@@ -38,6 +38,19 @@ class ChatResult:
         return self.done_reason.casefold() in {"length", "max_tokens"}
 
 
+def supports_thinking(model: str) -> bool:
+    """Return whether Ollama exposes a separate thinking stream for this model."""
+
+    normalized = model.casefold().replace("_", "-")
+    supported_markers = (
+        "qwen3",
+        "deepseek-r1",
+        "deepseek-v3.1",
+        "gpt-oss",
+    )
+    return any(marker in normalized for marker in supported_markers)
+
+
 class OllamaClient:
     def __init__(self, base_url: str, timeout: int = 600) -> None:
         self.base_url = base_url.rstrip("/")
@@ -65,6 +78,20 @@ class OllamaClient:
         )
         try:
             return urllib.request.urlopen(request, timeout=timeout or self.timeout)
+        except urllib.error.HTTPError as error:
+            raw_body = error.read().decode("utf-8", errors="replace").strip()
+            detail = raw_body
+            if raw_body:
+                try:
+                    parsed = json.loads(raw_body)
+                    detail = str(parsed.get("error") or raw_body)
+                except json.JSONDecodeError:
+                    pass
+            if not detail:
+                detail = str(error.reason or "Bad Request")
+            raise OllamaError(
+                f"Ollama отклонила запрос (HTTP {error.code}): {detail}"
+            ) from error
         except (urllib.error.URLError, TimeoutError) as error:
             reason = getattr(error, "reason", error)
             raise OllamaError(f"Не удалось обратиться к Ollama: {reason}") from error
@@ -116,11 +143,10 @@ class OllamaClient:
         messages: list[dict[str, str]],
         profile: GenerationProfile,
     ) -> Iterator[ChatEvent]:
-        payload = {
+        request_payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
             "stream": True,
-            "think": profile.think,
             "keep_alive": "10m",
             "options": {
                 "temperature": profile.temperature,
@@ -132,7 +158,12 @@ class OllamaClient:
                 "repeat_penalty": profile.repeat_penalty,
             },
         }
-        with self._request("/api/chat", payload) as response:
+        # Ollama rejects `think` for models without a thinking capability.
+        # Qwen2.5-Coder must therefore receive no `think` field at all.
+        if supports_thinking(model):
+            request_payload["think"] = profile.think
+
+        with self._request("/api/chat", request_payload) as response:
             for raw_line in response:
                 if not raw_line.strip():
                     continue
