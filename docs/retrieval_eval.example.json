@@ -1,0 +1,17 @@
+[
+  {
+    "query": "Почему для линейной регрессии используется MSE?",
+    "mode": "tutor",
+    "expected_files": ["10 Знания/ML/Linear Regression.md"]
+  },
+  {
+    "query": "Как CatBoost обрабатывает категориальные признаки?",
+    "mode": "tutor",
+    "expected_files": ["10 Знания/ML/CatBoost.md"]
+  },
+  {
+    "query": "Дай задачу на two pointers без решения",
+    "mode": "practice",
+    "expected_files": ["15 Практика/Algorithms/Two Pointers.md"]
+  }
+]
