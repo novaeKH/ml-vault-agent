@@ -82,6 +82,55 @@ forward → loss → backward → optimizer step. Укажи, как прове�
 }
 
 
+CALLOUT_GUIDE = """
+Оформляй ответ как аккуратную Markdown-заметку, которую легко просмотреть глазами.
+Если ответ длиннее одного короткого абзаца, разделяй его на 2–4 смысловых блока с
+заголовками `##`, используй короткие абзацы и списки для перечислений. Ключевые
+понятия выделяй **жирным**, а код всегда помещай в fenced code block с языком.
+
+Для действительно важных фрагментов используй не более двух визуальных карточек
+в точном Obsidian-формате (маркер и текст на разных строках):
+
+> [!SUMMARY] Коротко
+> Главная мысль ответа.
+
+Доступные карточки: `[!SUMMARY]` для вывода, `[!NOTE]` для важного уточнения,
+`[!TIP]` для практического совета, `[!WARNING]` для ошибки, `[!EXAMPLE]` для
+короткого примера, `[!QUESTION]` для вопроса и `[!SUCCESS]` для верной части ответа.
+Не используй HTML, декоративные карточки без пользы и несколько заголовков в
+ответе из одного-двух предложений. Не дублируй один текст в карточке и ниже.
+""".strip()
+
+
+PRESENTATION_PROMPTS = {
+    "chat": """
+Для объясняющего ответа начни с карточки `[!SUMMARY]`, затем раскрой механизм под
+смысловыми заголовками. Пример вынеси в отдельный раздел или карточку `[!EXAMPLE]`.
+Если вопрос короткий и фактический, ответь компактно без искусственных секций.
+""".strip(),
+    "tutor": """
+Обычно используй последовательность: карточка `[!SUMMARY]`, `## Интуиция`,
+`## Как это работает`, затем `## Пример`. Важное ограничение или частую ошибку
+покажи карточкой `[!WARNING]` или `[!NOTE]`. Оставляй только те блоки, которые
+помогают раскрыть конкретную тему.
+""".strip(),
+    "interviewer": """
+Новый вопрос помещай в одну карточку `[!QUESTION]` и не добавляй ответ к нему.
+После ответа пользователя коротко выдели верную часть карточкой `[!SUCCESS]`,
+главный пробел назови одним обычным пунктом, а затем задай ровно один следующий
+вопрос в `[!QUESTION]`. Не превращай один ход собеседования в длинную лекцию.
+""".strip(),
+    # Practice already has a strict task-card contract in MODE_PROMPTS. Keeping
+    # this empty prevents presentation rules from changing its proven format.
+    "practice": "",
+    "code": """
+Начни с карточки `[!SUMMARY]` с диагнозом или главной идеей. Затем используй
+смысловые блоки `## Почему`, `## Исправление` и `## Как проверить`, пропуская
+ненужные. Код отделяй от объяснения; критичную ловушку показывай в `[!WARNING]`.
+""".strip(),
+}
+
+
 def build_context(chunks: Iterable[dict[str, str]], max_chars: int) -> str:
     parts: list[str] = []
     used = 0
@@ -102,4 +151,12 @@ def build_context(chunks: Iterable[dict[str, str]], max_chars: int) -> str:
 
 def system_prompt(mode: str, context: str) -> str:
     mode_prompt = MODE_PROMPTS.get(mode, MODE_PROMPTS["chat"])
-    return f"{COMMON}\n\n{mode_prompt}\n\nКОНТЕКСТ ИЗ VAULT:\n\n{context}"
+    presentation_prompt = PRESENTATION_PROMPTS.get(
+        mode,
+        PRESENTATION_PROMPTS["chat"],
+    )
+    sections = [COMMON, mode_prompt]
+    if presentation_prompt:
+        sections.extend([CALLOUT_GUIDE, presentation_prompt])
+    sections.append(f"КОНТЕКСТ ИЗ VAULT:\n\n{context}")
+    return "\n\n".join(sections)

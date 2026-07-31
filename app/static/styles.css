@@ -507,6 +507,82 @@ button {
   color: #4f5d55;
 }
 
+.message-content blockquote.callout {
+  --callout-accent: #4d8c75;
+  --callout-border: rgba(29, 111, 84, 0.2);
+  --callout-bg: rgba(220, 236, 228, 0.62);
+  position: relative;
+  margin: 1.05em 0;
+  padding: 14px 16px 14px 17px;
+  overflow: hidden;
+  border: 1px solid var(--callout-border);
+  border-left: 4px solid var(--callout-accent);
+  border-radius: 11px;
+  color: var(--ink);
+  background: var(--callout-bg);
+  box-shadow: 0 5px 16px rgba(19, 32, 25, 0.035);
+}
+
+.message-content .callout-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+  color: var(--callout-accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.075em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.message-content .callout-title::before {
+  content: attr(data-icon);
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid color-mix(in srgb, var(--callout-accent) 30%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--callout-accent) 10%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.message-content blockquote.callout > p,
+.message-content blockquote.callout > ul,
+.message-content blockquote.callout > ol {
+  margin: 0.4em 0 0;
+}
+
+.message-content blockquote.callout-summary,
+.message-content blockquote.callout-success {
+  --callout-accent: #247257;
+  --callout-border: rgba(36, 114, 87, 0.2);
+  --callout-bg: rgba(220, 236, 228, 0.7);
+}
+
+.message-content blockquote.callout-note,
+.message-content blockquote.callout-question {
+  --callout-accent: #496f91;
+  --callout-border: rgba(73, 111, 145, 0.2);
+  --callout-bg: rgba(222, 233, 242, 0.66);
+}
+
+.message-content blockquote.callout-tip,
+.message-content blockquote.callout-example {
+  --callout-accent: #9a6625;
+  --callout-border: rgba(154, 102, 37, 0.21);
+  --callout-bg: rgba(244, 231, 205, 0.62);
+}
+
+.message-content blockquote.callout-warning {
+  --callout-accent: #a74b43;
+  --callout-border: rgba(167, 75, 67, 0.22);
+  --callout-bg: rgba(244, 222, 218, 0.62);
+}
+
 .message-content a {
   color: var(--green);
 }

@@ -26,6 +26,16 @@ const MODES = {
   },
 };
 
+const CALLOUT_TYPES = {
+  summary: { label: "Коротко", icon: "✦" },
+  note: { label: "Важно", icon: "i" },
+  tip: { label: "Совет", icon: "→" },
+  warning: { label: "Обратите внимание", icon: "!" },
+  example: { label: "Пример", icon: "<>" },
+  question: { label: "Вопрос", icon: "?" },
+  success: { label: "Верно", icon: "✓" },
+};
+
 const appState = {
   mode: "chat",
   sessionId: crypto.randomUUID(),
@@ -138,12 +148,48 @@ function sanitizeHtml(html) {
   return template.innerHTML;
 }
 
+function enhanceCallouts(target) {
+  target.querySelectorAll("blockquote").forEach((quote) => {
+    const firstParagraph = quote.querySelector(":scope > p");
+    if (!firstParagraph) return;
+
+    const walker = document.createTreeWalker(firstParagraph, NodeFilter.SHOW_TEXT);
+    const markerNode = walker.nextNode();
+    const match = markerNode?.nodeValue?.match(
+      /^\s*\[!(SUMMARY|NOTE|TIP|WARNING|EXAMPLE|QUESTION|SUCCESS)\](?:[ \t]+([^\n]*))?/i,
+    );
+    if (!match) return;
+
+    const type = match[1].toLowerCase();
+    const config = CALLOUT_TYPES[type];
+    const explicitTitle = match[2]?.trim();
+    markerNode.nodeValue = markerNode.nodeValue.slice(match[0].length);
+
+    const nextNode = markerNode.nextSibling;
+    if (!markerNode.nodeValue.trim()) markerNode.remove();
+    if (nextNode?.nodeName === "BR") nextNode.remove();
+
+    const title = document.createElement("div");
+    title.className = "callout-title";
+    title.dataset.icon = config.icon;
+    title.textContent = explicitTitle || config.label;
+
+    quote.classList.add("callout", `callout-${type}`);
+    quote.prepend(title);
+
+    if (!firstParagraph.textContent.trim() && !firstParagraph.children.length) {
+      firstParagraph.remove();
+    }
+  });
+}
+
 function renderMarkdown(markdown, target) {
   const { markdown: prepared, slots } = prepareMath(markdown);
   const rendered =
     window.marked?.parse(prepared, { gfm: true, breaks: true }) ??
     `<p>${escapeHtml(markdown)}</p>`;
   target.innerHTML = sanitizeHtml(rendered);
+  enhanceCallouts(target);
 
   target.querySelectorAll(".math-slot").forEach((slot) => {
     const item = slots[Number(slot.dataset.mathIndex)];

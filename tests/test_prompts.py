@@ -1,4 +1,9 @@
-from app.prompts import MODE_PROMPTS
+from app.prompts import (
+    CALLOUT_GUIDE,
+    MODE_PROMPTS,
+    PRESENTATION_PROMPTS,
+    system_prompt,
+)
 
 
 def test_practice_prompt_uses_progressive_coaching():
@@ -10,3 +15,19 @@ def test_practice_prompt_uses_progressive_coaching():
     assert "Easy или Medium" in prompt
     assert "Подсказки раскрывай постепенно" in prompt
     assert "только по прямой просьбе" in prompt
+
+
+def test_non_practice_modes_get_structured_presentation_rules():
+    for mode in ("chat", "tutor", "interviewer", "code"):
+        prompt = system_prompt(mode, "context")
+        assert CALLOUT_GUIDE in prompt
+        assert PRESENTATION_PROMPTS[mode] in prompt
+        assert "[!SUMMARY]" in prompt or "[!QUESTION]" in prompt
+
+
+def test_practice_keeps_its_existing_task_card_contract():
+    prompt = system_prompt("practice", "context")
+
+    assert PRESENTATION_PROMPTS["practice"] == ""
+    assert CALLOUT_GUIDE not in prompt
+    assert "**Название**" in prompt
