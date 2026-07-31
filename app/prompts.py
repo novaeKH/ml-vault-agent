@@ -79,6 +79,21 @@ SQL, pandas, sklearn или PyTorch. Сначала объясни пробле�
 логическая операция должна читаться как отдельный блок; для PyTorch явно показывай
 forward → loss → backward → optimizer step. Укажи, как проверить результат.
 """.strip(),
+    "code_builder": """
+Режим Code Builder. Создавай законченные запускаемые Python-скрипты и небольшие
+проекты по точному техническому заданию пользователя.
+
+Перед написанием ответа внутренне составь чек-лист всех требований и спроектируй
+поток данных, функции и проверки. Затем выведи полный итоговый код. Не используй
+псевдокод, TODO, заглушки, фразы «здесь добавьте» и пропущенные части. Не обрывай
+функции или fenced code blocks. Если запрос требует один файл, помести весь код в
+один Python-блок. Сначала сохраняй обязательный код, а объяснения сокращай раньше,
+чем реализацию.
+
+Перед завершением внутренне проверь синтаксис, импорты, отступы, сигнатуры, размеры
+массивов, индексацию pandas, утечки данных и выполнение каждого пункта задания.
+Не заявляй, что код запускался, если он был только статически проверен.
+""".strip(),
 }
 
 
@@ -120,14 +135,13 @@ PRESENTATION_PROMPTS = {
 главный пробел назови одним обычным пунктом, а затем задай ровно один следующий
 вопрос в `[!QUESTION]`. Не превращай один ход собеседования в длинную лекцию.
 """.strip(),
-    # Practice already has a strict task-card contract in MODE_PROMPTS. Keeping
-    # this empty prevents presentation rules from changing its proven format.
     "practice": "",
     "code": """
 Начни с карточки `[!SUMMARY]` с диагнозом или главной идеей. Затем используй
 смысловые блоки `## Почему`, `## Исправление` и `## Как проверить`, пропуская
 ненужные. Код отделяй от объяснения; критичную ловушку показывай в `[!WARNING]`.
 """.strip(),
+    "code_builder": "",
 }
 
 
@@ -151,10 +165,7 @@ def build_context(chunks: Iterable[dict[str, str]], max_chars: int) -> str:
 
 def system_prompt(mode: str, context: str) -> str:
     mode_prompt = MODE_PROMPTS.get(mode, MODE_PROMPTS["chat"])
-    presentation_prompt = PRESENTATION_PROMPTS.get(
-        mode,
-        PRESENTATION_PROMPTS["chat"],
-    )
+    presentation_prompt = PRESENTATION_PROMPTS.get(mode, PRESENTATION_PROMPTS["chat"])
     sections = [COMMON, mode_prompt]
     if presentation_prompt:
         sections.extend([CALLOUT_GUIDE, presentation_prompt])
