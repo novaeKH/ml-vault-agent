@@ -1,0 +1,18 @@
+.venv/
+venv/
+__pycache__/
+*.egg-info/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.env
+.env.*
+
+# Локальные настройки, индекс и логи. Vault хранится отдельно от проекта.
+data/*
+!data/.gitkeep
