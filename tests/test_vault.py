@@ -66,3 +66,24 @@ def test_tokenizer_supports_russian_and_code():
         "regression",
         "train_test",
     ]
+
+
+def test_practice_and_solution_have_separate_collections(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    practice_path = vault / "Practice.md"
+    practice_path.write_text(
+        "---\ntitle: Practice\ntype: practice\nrag: include\n---\n# Practice\n\n## Task\nSolve it.\n",
+        encoding="utf-8",
+    )
+    solution_path = vault / "Solution.md"
+    solution_path.write_text(
+        "---\ntitle: Solution\ntype: solution\nrag: include\n---\n# Solution\n\n## Code\nDone.\n",
+        encoding="utf-8",
+    )
+
+    practice = read_note(vault, practice_path)
+    solution = read_note(vault, solution_path)
+
+    assert practice is not None and practice.collection == "practice"
+    assert solution is not None and solution.collection == "solution"

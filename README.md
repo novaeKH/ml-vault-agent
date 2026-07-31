@@ -1,15 +1,19 @@
 # ML Vault Agent
 
-Локальный read-only RAG-агент для Obsidian-хранилища с заметками по Data Science
-и Machine Learning. Агент индексирует Markdown-разделы, объединяет BM25 и
-embeddings и формирует ответы через локальную модель Ollama.
+Локальный read-only RAG-агент для Obsidian-хранилища с заметками по Data Science,
+Machine Learning, Python и алгоритмам. Агент индексирует Markdown-разделы,
+объединяет BM25 и embeddings и формирует ответы через локальную модель Ollama.
 
 Все данные остаются на компьютере: web-интерфейс слушает только
 `http://127.0.0.1:8787`, а vault никогда не записывается и не загружается в GitHub.
 
 ## Возможности
 
-- режимы Chat, Tutor, Interviewer и Code Tutor;
+- режимы Chat, Tutor, Interviewer, Algorithm Practice и Code Tutor;
+- алгоритмическая практика с одной задачей за ход, поэтапными подсказками,
+  проверкой сложности и разбором кода;
+- отдельные retrieval-слои для теории, практики и эталонных решений, чтобы режим
+  Practice не раскрывал ответ раньше времени;
 - локальная генерация через `qwen3:8b`;
 - мультиязычный семантический поиск через `qwen3-embedding:0.6b`;
 - инкрементальный SQLite-индекс;
@@ -72,6 +76,21 @@ cd ml-vault-agent
 
 После запуска откройте [http://127.0.0.1:8787](http://127.0.0.1:8787).
 
+## Режим Algorithm Practice
+
+Выберите **Practice** в боковом меню и укажите тему или уровень, например:
+
+```text
+Дай easy-задачу на two pointers без решения.
+Хочу потренировать sliding window, уровень medium.
+Проверь мою идею и дай только первую подсказку.
+Объясни, как распознавать задачи на prefix sum.
+```
+
+Агент даёт одну задачу, просит сначала сформулировать идею и раскрывает подсказки
+по уровням. Эталонный код показывается только по прямой просьбе. Для свободного
+разбора готового решения используйте **Code Tutor**.
+
 ## Подключение Obsidian vault
 
 Vault должен быть обычной локальной папкой, внутри которой есть каталог
@@ -127,14 +146,17 @@ Windows PowerShell:
 
 ## Как устроен индекс
 
-1. В индекс попадают заметки с `type: concept`, `type: deep-dive`,
-   `type: interview` или `rag: include`.
-2. `rag: exclude`, `status: archived`, `.trash`, `.obsidian` и скрытые папки
+1. `type: concept` и `type: deep-dive` образуют базу знаний.
+2. `type: practice` + `rag: include` образуют коллекцию задач и подсказок.
+3. `type: solution` + `rag: include` образуют отдельную коллекцию решений,
+   доступную Code Tutor, но не режиму Practice.
+4. `type: interview` образует коллекцию режима Interviewer.
+5. `rag: exclude`, `status: archived`, `.trash`, `.obsidian` и скрытые папки
    всегда пропускаются.
-3. Markdown делится по H2/H3; chunks получают title, breadcrumb, aliases, type,
+6. Markdown делится по H2/H3; chunks получают title, breadcrumb, aliases, type,
    area, heading и относительный путь.
-4. Reindex пересчитывает только новые, изменённые и удалённые файлы.
-5. Поиск объединяет BM25 и cosine similarity через reciprocal-rank fusion.
+7. Reindex пересчитывает только новые, изменённые и удалённые файлы.
+8. Поиск объединяет BM25 и cosine similarity через reciprocal-rank fusion.
 
 ## Структура проекта
 

@@ -88,3 +88,59 @@ def test_removed_file_is_removed_from_index(tmp_path: Path):
 
     assert result["removed_files"] == 1
     assert index.stats()["chunks"] == 0
+
+
+def test_practice_mode_retrieves_tasks_but_not_solutions(tmp_path: Path):
+    vault = make_vault(tmp_path)
+    (vault / "Two Pointers Practice.md").write_text(
+        """---
+title: Two Pointers Practice
+type: practice
+area: algorithms
+rag: include
+---
+# Two Pointers Practice
+
+## Palindrome task
+
+Проверьте палиндром двумя указателями. Сначала сформулируйте инвариант.
+""",
+        encoding="utf-8",
+    )
+    (vault / "Two Pointers Solution.md").write_text(
+        """---
+title: Two Pointers Solution
+type: solution
+area: algorithms
+rag: include
+---
+# Two Pointers Solution
+
+## Palindrome reference solution
+
+Эталонное решение palindrome использует left и right с движением навстречу.
+""",
+        encoding="utf-8",
+    )
+    index = HybridIndex(tmp_path / "practice.sqlite3")
+    settings = Settings(vault_path=str(vault), top_k=10)
+    index.reindex(settings, embedder=None)
+
+    practice_results = index.search(
+        "Дай задачу palindrome на two pointers",
+        settings,
+        embedder=None,
+        mode="practice",
+    )
+    code_results = index.search(
+        "Покажи эталонное решение palindrome left right",
+        settings,
+        embedder=None,
+        mode="code",
+    )
+
+    assert any(result.collection == "practice" for result in practice_results)
+    assert all(result.collection != "solution" for result in practice_results)
+    assert any(result.collection == "solution" for result in code_results)
+    assert index.stats()["collections"]["practice"] > 0
+    assert index.stats()["collections"]["solution"] > 0

@@ -93,10 +93,16 @@ def _title_from_body(body: str, fallback: str) -> str:
 def _collection(note_type: str, rag: str, status: str) -> str:
     if rag.casefold() == "exclude" or status.casefold() == "archived":
         return ""
-    if note_type in {"concept", "deep-dive"} or rag.casefold() == "include":
+    if note_type == "practice" and rag.casefold() == "include":
+        return "practice"
+    if note_type == "solution" and rag.casefold() == "include":
+        return "solution"
+    if note_type in {"concept", "deep-dive"}:
         return "knowledge"
     if note_type == "interview":
         return "interview"
+    if rag.casefold() == "include":
+        return "knowledge"
     return ""
 
 

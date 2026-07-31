@@ -2,7 +2,7 @@ const MODES = {
   chat: {
     label: "Chat",
     title: "Chat",
-    placeholder: "Спросите о ML, математике или коде…",
+    placeholder: "Спросите о ML, Python, алгоритмах или коде…",
   },
   tutor: {
     label: "Tutor",
@@ -13,6 +13,11 @@ const MODES = {
     label: "Interviewer",
     title: "Interviewer",
     placeholder: "Укажите тему собеседования…",
+  },
+  practice: {
+    label: "Practice",
+    title: "Algorithm Practice",
+    placeholder: "Тема, уровень или ваша попытка решения…",
   },
   code: {
     label: "Code Tutor",

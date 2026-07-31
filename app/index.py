@@ -16,6 +16,9 @@ from app.ollama_client import OllamaError
 from app.vault import Chunk, chunks_for_note, iter_markdown, read_note, tokenize
 
 
+INDEX_FORMAT_VERSION = "2"
+
+
 class Embedder(Protocol):
     def embed_documents(self, model: str, texts: list[str]) -> list[list[float]]: ...
 
@@ -188,9 +191,12 @@ class HybridIndex:
             }
             previous_vault = self._get_meta(connection, "vault_path")
             previous_model = self._get_meta(connection, "embedding_model")
+            previous_format = self._get_meta(connection, "index_format_version")
             if previous_vault and previous_vault != str(vault_root.resolve()):
                 force = True
             if previous_model and previous_model != settings.embedding_model:
+                force = True
+            if previous_format != INDEX_FORMAT_VERSION:
                 force = True
 
             source_files: dict[str, tuple[Path, Any]] = {}
@@ -388,6 +394,7 @@ class HybridIndex:
 
             self._set_meta(connection, "vault_path", str(vault_root.resolve()))
             self._set_meta(connection, "embedding_model", settings.embedding_model)
+            self._set_meta(connection, "index_format_version", INDEX_FORMAT_VERSION)
             self._set_meta(connection, "updated_at", now)
 
             total_files = connection.execute("SELECT COUNT(*) FROM files").fetchone()[0]
@@ -496,7 +503,12 @@ class HybridIndex:
         mode: str = "chat",
         top_k: int | None = None,
     ) -> list[SearchResult]:
-        collections = ["knowledge", "interview"] if mode == "interviewer" else ["knowledge"]
+        collections_by_mode = {
+            "interviewer": ["knowledge", "interview"],
+            "practice": ["knowledge", "practice"],
+            "code": ["knowledge", "practice", "solution"],
+        }
+        collections = collections_by_mode.get(mode, ["knowledge"])
         placeholders = ",".join("?" for _ in collections)
         with self._connect() as connection:
             rows = connection.execute(
@@ -544,9 +556,13 @@ class HybridIndex:
             for chunk_id in fused:
                 if by_id[chunk_id]["collection"] == "interview":
                     fused[chunk_id] *= 1.08
+        if mode == "practice":
+            for chunk_id in fused:
+                if by_id[chunk_id]["collection"] == "practice":
+                    fused[chunk_id] *= 1.12
         if mode == "code":
             for chunk_id in fused:
-                if by_id[chunk_id]["note_type"] == "practice":
+                if by_id[chunk_id]["collection"] in {"practice", "solution"}:
                     fused[chunk_id] *= 1.08
 
         ordered = sorted(fused, key=fused.get, reverse=True)

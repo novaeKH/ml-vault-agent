@@ -27,7 +27,7 @@ from app.ollama_client import OllamaClient, OllamaError
 from app.prompts import build_context, system_prompt
 
 
-Mode = Literal["chat", "tutor", "interviewer", "code"]
+Mode = Literal["chat", "tutor", "interviewer", "practice", "code"]
 
 
 class ChatRequest(BaseModel):
@@ -122,7 +122,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="ML Vault Agent",
-    version="0.1.0",
+    version="0.2.0",
     docs_url="/api/docs",
     redoc_url=None,
     lifespan=lifespan,
