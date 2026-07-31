@@ -4,11 +4,38 @@ import json
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
+from dataclasses import dataclass, field
 from typing import Any
+
+from app.generation import GenerationProfile
 
 
 class OllamaError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class ChatEvent:
+    content: str = ""
+    thinking: str = ""
+    done: bool = False
+    done_reason: str = ""
+    prompt_eval_count: int = 0
+    eval_count: int = 0
+
+
+@dataclass(slots=True)
+class ChatResult:
+    content: str = ""
+    thinking: str = ""
+    done_reason: str = ""
+    prompt_eval_count: int = 0
+    eval_count: int = 0
+    raw_events: list[ChatEvent] = field(default_factory=list)
+
+    @property
+    def truncated(self) -> bool:
+        return self.done_reason.casefold() in {"length", "max_tokens"}
 
 
 class OllamaClient:
@@ -82,6 +109,76 @@ class OllamaClient:
         )
         return self.embed_documents(model, [instructed_query])[0]
 
+    def chat_events(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, str]],
+        profile: GenerationProfile,
+    ) -> Iterator[ChatEvent]:
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": True,
+            "think": profile.think,
+            "keep_alive": "10m",
+            "options": {
+                "temperature": profile.temperature,
+                "top_p": profile.top_p,
+                "top_k": profile.top_k,
+                "min_p": profile.min_p,
+                "num_ctx": profile.num_ctx,
+                "num_predict": profile.num_predict,
+                "repeat_penalty": profile.repeat_penalty,
+            },
+        }
+        with self._request("/api/chat", payload) as response:
+            for raw_line in response:
+                if not raw_line.strip():
+                    continue
+                try:
+                    payload_event = json.loads(raw_line)
+                except json.JSONDecodeError as error:
+                    raise OllamaError("Ollama вернула повреждённый stream.") from error
+                if "error" in payload_event:
+                    raise OllamaError(str(payload_event["error"]))
+                message = payload_event.get("message", {})
+                event = ChatEvent(
+                    content=str(message.get("content", "") or ""),
+                    thinking=str(message.get("thinking", "") or ""),
+                    done=bool(payload_event.get("done", False)),
+                    done_reason=str(payload_event.get("done_reason", "") or ""),
+                    prompt_eval_count=int(payload_event.get("prompt_eval_count", 0) or 0),
+                    eval_count=int(payload_event.get("eval_count", 0) or 0),
+                )
+                yield event
+                if event.done:
+                    break
+
+    def complete(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, str]],
+        profile: GenerationProfile,
+    ) -> ChatResult:
+        result = ChatResult()
+        content_parts: list[str] = []
+        thinking_parts: list[str] = []
+        for event in self.chat_events(model=model, messages=messages, profile=profile):
+            result.raw_events.append(event)
+            if event.content:
+                content_parts.append(event.content)
+            if event.thinking:
+                thinking_parts.append(event.thinking)
+            if event.done:
+                result.done_reason = event.done_reason
+                result.prompt_eval_count = event.prompt_eval_count
+                result.eval_count = event.eval_count
+        result.content = "".join(content_parts).strip()
+        result.thinking = "".join(thinking_parts).strip()
+        return result
+
     def chat_stream(
         self,
         *,
@@ -91,31 +188,14 @@ class OllamaClient:
         num_ctx: int = 16_384,
         num_predict: int = 1_600,
     ) -> Iterator[str]:
-        payload = {
-            "model": model,
-            "messages": messages,
-            "stream": True,
-            "think": False,
-            "keep_alive": "10m",
-            "options": {
-                "temperature": temperature,
-                "num_ctx": num_ctx,
-                "num_predict": num_predict,
-                "repeat_penalty": 1.05,
-            },
-        }
-        with self._request("/api/chat", payload) as response:
-            for raw_line in response:
-                if not raw_line.strip():
-                    continue
-                try:
-                    event = json.loads(raw_line)
-                except json.JSONDecodeError as error:
-                    raise OllamaError("Ollama вернула повреждённый stream.") from error
-                if "error" in event:
-                    raise OllamaError(str(event["error"]))
-                content = event.get("message", {}).get("content", "")
-                if content:
-                    yield content
-                if event.get("done"):
-                    break
+        profile = GenerationProfile(
+            think=False,
+            num_ctx=num_ctx,
+            num_predict=num_predict,
+            temperature=temperature,
+            top_p=0.8,
+            top_k=20,
+        )
+        for event in self.chat_events(model=model, messages=messages, profile=profile):
+            if event.content:
+                yield event.content
