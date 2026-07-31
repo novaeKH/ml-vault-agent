@@ -7,6 +7,32 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
+function Test-NativeCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Command,
+
+        [string[]]$Arguments = @()
+    )
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    $exitCode = 1
+
+    try {
+        # Windows PowerShell 5.1 can turn native stderr into a terminating
+        # NativeCommandError when ErrorActionPreference is Stop. Probe
+        # failures are expected, so suppress that behavior only here.
+        $ErrorActionPreference = "SilentlyContinue"
+        & $Command @Arguments *> $null
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    return $exitCode -eq 0
+}
+
 function Get-CompatiblePython {
     $candidates = @(
         @{ Command = "py"; Arguments = @("-3.14") },
@@ -23,8 +49,12 @@ function Get-CompatiblePython {
             continue
         }
         $arguments = [string[]]$candidate.Arguments
-        & $command @arguments -c "import sys; raise SystemExit(0 if (3, 11) <= sys.version_info[:2] < (3, 15) else 1)" 2>$null
-        if ($LASTEXITCODE -eq 0) {
+        [string[]]$probeArguments = @($arguments) + @(
+            "-c",
+            "import sys; raise SystemExit(0 if (3, 11) <= sys.version_info[:2] < (3, 15) else 1)"
+        )
+
+        if (Test-NativeCommand -Command $command -Arguments $probeArguments) {
             return [PSCustomObject]@{
                 Command = $command
                 Arguments = $arguments
@@ -86,8 +116,7 @@ if (-not $SkipModels) {
     }
 
     foreach ($model in @("qwen3:8b", "qwen3-embedding:0.6b")) {
-        & ollama show $model *> $null
-        if ($LASTEXITCODE -eq 0) {
+        if (Test-NativeCommand -Command "ollama" -Arguments @("show", $model)) {
             Write-Host "OK $model is already installed"
         }
         else {

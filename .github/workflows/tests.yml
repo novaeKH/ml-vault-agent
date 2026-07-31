@@ -39,5 +39,9 @@ jobs:
               exit 1
             }
           }
+      - name: Smoke test Windows setup
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: .\setup.ps1 -SkipModels -SkipIndex
       - name: Run tests
         run: python -m pytest
