@@ -9,7 +9,6 @@ from typing import Iterator
 
 WORD_RE = re.compile(r"[\wÀ-ÖØ-öø-ÿА-Яа-яЁё]+(?:[-_][\wА-Яа-яЁё]+)*", re.UNICODE)
 FRONTMATTER_RE = re.compile(r"^---\r?\n([\s\S]*?)\r?\n---\r?\n?")
-HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 
 
 @dataclass(slots=True)
@@ -144,18 +143,45 @@ def _word_count(text: str) -> int:
     return len(tokenize(text))
 
 
-def _make_chunk(note: Note, heading: str, content: str, level: int) -> Chunk:
+def _heading_indices(lines: list[str], level: int) -> list[int]:
+    marker = "#" * level + " "
+    indices: list[int] = []
+    in_fence = False
+    fence_marker = ""
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        fence = re.match(r"^(```+|~~~+)", stripped)
+        if fence:
+            current = fence.group(1)
+            if not in_fence:
+                in_fence = True
+                fence_marker = current[0]
+            elif current[0] == fence_marker:
+                in_fence = False
+                fence_marker = ""
+            continue
+        if not in_fence and line.startswith(marker):
+            indices.append(index)
+    return indices
+
+
+def _make_chunk(
+    note: Note,
+    heading: str,
+    content: str,
+    level: int,
+    ordinal: int,
+) -> Chunk:
     clean = content.strip()
     breadcrumb = note.title if heading == "Overview" else f"{note.title} > {heading}"
-    alias_context = (
-        f"\nAliases: {'; '.join(note.aliases)}" if note.aliases else ""
-    )
+    alias_context = f"\nAliases: {'; '.join(note.aliases)}" if note.aliases else ""
     text = f"# {note.title}\n\nBreadcrumb: {breadcrumb}{alias_context}\n\n{clean}"
     normalized = re.sub(r"\s+", " ", clean).strip().casefold()
     digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-    safe_heading = heading.replace("#", "№")
+    identity = f"{note.relative_path}|{level}|{ordinal}|{heading}|{digest}"
+    chunk_key = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
     return Chunk(
-        chunk_id=f"{note.relative_path}#{safe_heading}",
+        chunk_id=f"{note.relative_path}#{ordinal}-{chunk_key}",
         file_path=note.relative_path,
         title=note.title,
         heading=heading,
@@ -173,37 +199,31 @@ def _make_chunk(note: Note, heading: str, content: str, level: int) -> Chunk:
 
 def _raw_chunks(note: Note) -> list[Chunk]:
     lines = note.body.splitlines()
-    h2_indices = [
-        index for index, line in enumerate(lines) if re.match(r"^##\s+", line)
-    ]
-    chunks: list[Chunk] = []
+    h2_indices = _heading_indices(lines, 2)
+    chunk_specs: list[tuple[str, str, int]] = []
 
     first_h2 = h2_indices[0] if h2_indices else len(lines)
     preamble = "\n".join(
         line for line in lines[:first_h2] if not re.match(r"^#\s+", line)
     ).strip()
     if _word_count(preamble) >= 30:
-        chunks.append(_make_chunk(note, "Overview", preamble, 1))
+        chunk_specs.append(("Overview", preamble, 1))
 
     for position, start in enumerate(h2_indices):
         end = h2_indices[position + 1] if position + 1 < len(h2_indices) else len(lines)
         heading = re.sub(r"^##\s+", "", lines[start]).strip()
         section_lines = lines[start + 1 : end]
         section_text = "\n".join(section_lines).strip()
-        h3_offsets = [
-            offset
-            for offset, line in enumerate(section_lines)
-            if re.match(r"^###\s+", line)
-        ]
+        h3_offsets = _heading_indices(section_lines, 3)
 
         if len(section_text) <= 4_500 or not h3_offsets:
             if section_text:
-                chunks.append(_make_chunk(note, heading, section_text, 2))
+                chunk_specs.append((heading, section_text, 2))
             continue
 
         intro = "\n".join(section_lines[: h3_offsets[0]]).strip()
         if len(intro) >= 80:
-            chunks.append(_make_chunk(note, heading, intro, 2))
+            chunk_specs.append((heading, intro, 2))
 
         for h3_position, h3_start in enumerate(h3_offsets):
             h3_end = (
@@ -214,17 +234,19 @@ def _raw_chunks(note: Note) -> list[Chunk]:
             h3_heading = re.sub(r"^###\s+", "", section_lines[h3_start]).strip()
             h3_text = "\n".join(section_lines[h3_start + 1 : h3_end]).strip()
             if h3_text:
-                chunks.append(
-                    _make_chunk(note, f"{heading} > {h3_heading}", h3_text, 3)
-                )
+                chunk_specs.append((f"{heading} > {h3_heading}", h3_text, 3))
 
-    if not chunks:
+    if not chunk_specs:
         fallback = "\n".join(
             line for line in lines if not re.match(r"^#\s+", line)
         ).strip()
         if fallback:
-            chunks.append(_make_chunk(note, "Overview", fallback, 1))
-    return chunks
+            chunk_specs.append(("Overview", fallback, 1))
+
+    return [
+        _make_chunk(note, heading, content, level, ordinal)
+        for ordinal, (heading, content, level) in enumerate(chunk_specs, start=1)
+    ]
 
 
 def _merge_short_knowledge_chunks(note: Note, chunks: list[Chunk]) -> list[Chunk]:
@@ -252,7 +274,7 @@ def _merge_short_knowledge_chunks(note: Note, chunks: list[Chunk]) -> list[Chunk
             groups.append(current)
 
     merged: list[Chunk] = []
-    for group in groups:
+    for ordinal, group in enumerate(groups, start=1):
         if len(group) == 1:
             merged.append(group[0])
             continue
@@ -268,6 +290,7 @@ def _merge_short_knowledge_chunks(note: Note, chunks: list[Chunk]) -> list[Chunk
                 f"{group[0].heading} — {group[-1].heading}",
                 "\n\n".join(content_parts),
                 2,
+                ordinal,
             )
         )
     return merged
