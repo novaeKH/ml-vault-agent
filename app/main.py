@@ -29,6 +29,9 @@ from app.generation import (
     trim_messages_to_context,
 )
 from app.index import HybridIndex
+from app.learning_catalog import CatalogError, diagnostic_map, load_catalog, skill_map
+from app.learning_memory import LearningMemory
+from app.learning_review import ReviewError, review_answer
 from app.ollama_client import OllamaClient, OllamaError
 from app.prompts import build_context, system_prompt
 
@@ -40,6 +43,7 @@ class ChatRequest(BaseModel):
     session_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
     message: str = Field(min_length=1, max_length=20_000)
     mode: Mode = "chat"
+    skill_id: str | None = Field(default=None, max_length=120)
 
 
 class ResetRequest(BaseModel):
@@ -61,10 +65,30 @@ class SettingsUpdate(BaseModel):
     history_messages: int | None = None
 
 
+class DiagnoseRequest(BaseModel):
+    skill_id: str = Field(min_length=1, max_length=120)
+    diagnostic_id: str = Field(min_length=1, max_length=160)
+    answer: str = Field(min_length=1, max_length=20_000)
+
+
+class LearningEvidenceRequest(BaseModel):
+    skill_id: str = Field(min_length=1, max_length=120)
+    axis: Literal["recall", "explain", "apply", "diagnose"]
+    score: float = Field(ge=0, le=1)
+    activity_id: str = Field(default="self-report", max_length=160)
+    error_code: str | None = Field(default=None, max_length=120)
+    note: str = Field(default="", max_length=2_000)
+
+
+class DismissEvidenceRequest(BaseModel):
+    dismissed: bool = True
+
+
 class RuntimeState:
     def __init__(self) -> None:
         self.settings = load_settings()
         self.index = HybridIndex()
+        self.learning = LearningMemory()
         self.sessions: dict[str, list[dict[str, str]]] = {}
         self.lock = threading.RLock()
         self.indexing = False
@@ -91,6 +115,45 @@ class RuntimeState:
 
 
 state = RuntimeState()
+
+
+def _load_catalog_or_http() -> dict:
+    if not state.settings.vault_path:
+        raise HTTPException(status_code=400, detail="Сначала выберите Obsidian vault.")
+    try:
+        return load_catalog(state.settings.vault_path)
+    except CatalogError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+def _selected_skill(catalog: dict, skill_id: str) -> dict:
+    skill = skill_map(catalog).get(skill_id)
+    if skill is None:
+        raise HTTPException(status_code=404, detail=f"Неизвестный навык: {skill_id}")
+    return skill
+
+
+def _learning_prompt_context(catalog: dict, skill: dict) -> str:
+    profile = state.learning.skill_profile(skill["id"])
+    axis_lines = []
+    for axis, summary in profile["axes"].items():
+        if summary["level"] == "unseen":
+            axis_lines.append(f"- {axis}: ещё нет evidence")
+        else:
+            axis_lines.append(
+                f"- {axis}: {summary['level']}, score={summary['score']}, "
+                f"reliability={summary['reliability']}, "
+                f"evidence={summary['evidence_count']}"
+            )
+    errors = ", ".join(item["code"] for item in profile["active_errors"])
+    outcomes = "\n".join(f"- {outcome}" for outcome in skill["outcomes"])
+    return (
+        f"Текущий навык: {skill['title']} ({skill['id']}).\n"
+        f"Ожидаемые результаты:\n{outcomes}\n"
+        f"Текущее evidence по граням:\n" + "\n".join(axis_lines) + "\n"
+        f"Повторяющиеся ошибки: {errors or 'не зафиксированы'}.\n"
+        f"Всего активных evidence: {profile['evidence_count']}."
+    )
 
 
 async def _perform_reindex(force: bool) -> None:
@@ -225,6 +288,127 @@ def reset_session(request: ResetRequest) -> dict:
     return {"ok": True}
 
 
+@app.get("/api/learning/overview")
+def learning_overview() -> dict:
+    if not state.settings.vault_path:
+        return {
+            "available": False,
+            "error": "Сначала выберите Obsidian vault.",
+        }
+    try:
+        catalog = load_catalog(state.settings.vault_path)
+    except CatalogError as error:
+        return {"available": False, "error": str(error)}
+    return {"available": True, **state.learning.overview(catalog)}
+
+
+@app.get("/api/learning/skills/{skill_id}")
+def learning_skill(skill_id: str) -> dict:
+    catalog = _load_catalog_or_http()
+    skill = _selected_skill(catalog, skill_id)
+    return {
+        "skill": skill,
+        "profile": state.learning.skill_profile(skill_id),
+        "evidence": state.learning.evidence(
+            skill_id=skill_id,
+            include_dismissed=True,
+            limit=100,
+        ),
+    }
+
+
+@app.post("/api/learning/diagnose")
+def diagnose_learning_answer(request: DiagnoseRequest) -> dict:
+    catalog = _load_catalog_or_http()
+    skill = _selected_skill(catalog, request.skill_id)
+    diagnostic_entry = diagnostic_map(catalog).get(request.diagnostic_id)
+    if diagnostic_entry is None or diagnostic_entry[0] != request.skill_id:
+        raise HTTPException(
+            status_code=404,
+            detail="Диагностический вопрос не относится к выбранному навыку.",
+        )
+    diagnostic = diagnostic_entry[1]
+    try:
+        review = review_answer(
+            state.client(),
+            model=state.settings.chat_model,
+            skill=skill,
+            diagnostic=diagnostic,
+            answer=request.answer,
+        )
+    except OllamaError as error:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"{error}. Запустите Ollama и проверьте модель "
+                f"`{state.settings.chat_model}`."
+            ),
+        ) from error
+    except ReviewError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+
+    event = state.learning.record_evidence(
+        skill_id=request.skill_id,
+        axis=diagnostic["axis"],
+        evidence_kind="rubric",
+        score=review["score"],
+        confidence=0.7,
+        activity_id=request.diagnostic_id,
+        error_code=review["error_code"],
+        note=review["feedback"],
+        details={
+            "criteria": review["criteria"],
+            "reviewer": state.settings.chat_model,
+            "catalog_id": catalog["catalog_id"],
+        },
+    )
+    return {
+        "ok": True,
+        "review": review,
+        "evidence": event,
+        "profile": state.learning.skill_profile(request.skill_id),
+    }
+
+
+@app.post("/api/learning/evidence")
+def add_learning_evidence(request: LearningEvidenceRequest) -> dict:
+    catalog = _load_catalog_or_http()
+    _selected_skill(catalog, request.skill_id)
+    if request.error_code and request.error_code not in catalog["error_taxonomy"]:
+        raise HTTPException(status_code=400, detail="Неизвестный тип ошибки.")
+    event = state.learning.record_evidence(
+        skill_id=request.skill_id,
+        axis=request.axis,
+        evidence_kind="self_report",
+        score=request.score,
+        confidence=0.35,
+        activity_id=request.activity_id,
+        error_code=request.error_code,
+        note=request.note,
+    )
+    return {
+        "ok": True,
+        "evidence": event,
+        "profile": state.learning.skill_profile(request.skill_id),
+    }
+
+
+@app.post("/api/learning/evidence/{event_id}/dismiss")
+def dismiss_learning_evidence(
+    event_id: int,
+    request: DismissEvidenceRequest,
+) -> dict:
+    try:
+        event = state.learning.set_dismissed(event_id, dismissed=request.dismissed)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    return {
+        "ok": True,
+        "evidence": event,
+        "profile": state.learning.skill_profile(event["skill_id"]),
+    }
+
+
 @app.get("/api/search")
 def search(
     q: str = Query(min_length=1, max_length=2_000),
@@ -253,9 +437,18 @@ def chat(request: ChatRequest) -> StreamingResponse:
     if not message:
         raise HTTPException(status_code=400, detail="Сообщение пустое.")
 
+    selected_skill: dict | None = None
+    learning_context = ""
+    if request.skill_id:
+        catalog = _load_catalog_or_http()
+        selected_skill = _selected_skill(catalog, request.skill_id)
+        learning_context = _learning_prompt_context(catalog, selected_skill)
+
     previous_history = state.history(request.session_id)
     state.append(request.session_id, "user", message)
     search_query = retrieval_query(previous_history, message)
+    if selected_skill:
+        search_query = f"{search_query}\nТекущий навык: {selected_skill['title']}"
     settings = state.settings
     client = state.client()
     embedder = client if client.available() else None
@@ -284,7 +477,10 @@ def chat(request: ChatRequest) -> StreamingResponse:
     recent_history = previous_history[-settings.history_messages :]
     profile = profile_for_mode(request.mode, settings.temperature)
     messages = [
-        {"role": "system", "content": system_prompt(request.mode, context)},
+        {
+            "role": "system",
+            "content": system_prompt(request.mode, context, learning_context),
+        },
         *recent_history,
         {"role": "user", "content": message},
     ]

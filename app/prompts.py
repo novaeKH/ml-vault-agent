@@ -172,7 +172,7 @@ def build_context(chunks: Iterable[dict[str, str]], max_chars: int) -> str:
     return "\n\n---\n\n".join(parts) if parts else "(Релевантные фрагменты не найдены.)"
 
 
-def system_prompt(mode: str, context: str) -> str:
+def system_prompt(mode: str, context: str, learning_context: str = "") -> str:
     mode_prompt = MODE_PROMPTS.get(mode, MODE_PROMPTS["chat"])
     presentation_prompt = PRESENTATION_PROMPTS.get(
         mode,
@@ -181,5 +181,17 @@ def system_prompt(mode: str, context: str) -> str:
     sections = [COMMON, ML_REASONING_GUIDE, mode_prompt]
     if presentation_prompt:
         sections.extend([CALLOUT_GUIDE, presentation_prompt])
+    if learning_context:
+        sections.append(
+            """УЧЕБНЫЙ КОНТЕКСТ, ЯВНО ВЫБРАННЫЙ ПОЛЬЗОВАТЕЛЕМ:
+
+Используй его для выбора глубины объяснения и следующего полезного шага. Это
+наблюдения, а не диагноз личности: не называй пользователя слабым, не выдавай
+низкоуверенную запись за факт и не добавляй новые оценки в память из обычного
+диалога. Если повторяющаяся ошибка указана, проверь понимание на новом примере.
+
+"""
+            + learning_context
+        )
     sections.append(f"КОНТЕКСТ ИЗ VAULT:\n\n{context}")
     return "\n\n".join(sections)

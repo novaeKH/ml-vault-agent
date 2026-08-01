@@ -54,3 +54,15 @@ def test_interviewer_first_turn_forbids_premature_feedback():
 
     assert "Первый ход должен состоять только" in prompt
     assert "запрещены `[!SUCCESS]`" in prompt
+
+
+def test_selected_learning_context_is_labeled_as_evidence_not_diagnosis():
+    prompt = system_prompt(
+        "tutor",
+        "vault context",
+        "Текущий навык: Data leakage. reliability=low",
+    )
+
+    assert "УЧЕБНЫЙ КОНТЕКСТ" in prompt
+    assert "наблюдения, а не диагноз личности" in prompt
+    assert "Data leakage" in prompt

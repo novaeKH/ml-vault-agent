@@ -15,8 +15,8 @@ Last updated: 2026-08-02
 
 - [x] 0. Create isolated reproducible branches and freeze the contract.
 - [x] 1. Add and validate the ten-skill catalog and roadmap in the vault.
-- [ ] 2. Implement deterministic SQLite evidence memory and review schedule.
-- [ ] 3. Add learning API and optional skill context to chat.
+- [x] 2. Implement deterministic SQLite evidence memory and review schedule.
+- [x] 3. Add learning API and optional skill context to chat.
 - [ ] 4. Build the learning dashboard and diagnostic interaction.
 - [ ] 5. Complete automated, integration and visual verification.
 - [ ] 6. Move verified branches to the laptop's primary folders and publish.
@@ -42,6 +42,11 @@ anything into the primary app or vault, rerun all verification commands below.
 Checkpoint 1 commits contain the vault catalog/roadmap and the standalone
 `app.learning_catalog` validator. The catalog currently reports 10 skills,
 4 stages and 10 diagnostics with no missing note paths.
+
+Checkpoint 2–3 add the versioned `learning.sqlite3` schema, transparent mastery,
+review scheduling, reversible evidence, rubric parsing, five learning endpoints
+and opt-in `skill_id` context for chat. At this checkpoint the full suite reports
+42 passing tests.
 
 ## Verification commands
 

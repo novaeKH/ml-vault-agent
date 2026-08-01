@@ -65,6 +65,14 @@ not a hidden model score. Review intervals follow a small documented ladder:
 `1 -> 3 -> 7 -> 14 -> 30` days after successful attempts; partial or failed
 attempts shorten the interval.
 
+The exact v1 calculation uses at most the eight newest events per axis. Event
+weight is `source_weight * confidence * 0.88^position`, where source weights are
+`1.0` deterministic, `0.75` rubric review, `0.35` agent observation and `0.25`
+self-report. Level thresholds are `<0.45 needs_work`, `<0.70 developing`,
+`<0.85 reliable`; `strong` additionally needs at least two events. An error code
+appears as recurring only after two active observations, and two later successful
+attempts resolve it. Dismissing/restoring evidence also rebuilds review state.
+
 ## Learning loop
 
 1. Select a skill from the optional roadmap or the weak/due list.
