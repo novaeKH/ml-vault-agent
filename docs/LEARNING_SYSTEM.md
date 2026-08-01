@@ -71,7 +71,8 @@ weight is `source_weight * confidence * 0.88^position`, where source weights are
 self-report. Level thresholds are `<0.45 needs_work`, `<0.70 developing`,
 `<0.85 reliable`; `strong` additionally needs at least two events. An error code
 appears as recurring only after two active observations, and two later successful
-attempts resolve it. Dismissing/restoring evidence also rebuilds review state.
+attempts resolve it. The weak-skills summary likewise requires at least two
+events on an axis. Dismissing/restoring evidence also rebuilds review state.
 
 ## Learning loop
 

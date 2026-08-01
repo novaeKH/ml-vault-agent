@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -142,3 +143,52 @@ def test_memory_persists_between_instances(tmp_path: Path):
 
     second = LearningMemory(path)
     assert second.skill_profile("ml.framing")["evidence_count"] == 1
+
+
+def test_newer_unknown_database_schema_is_rejected(tmp_path: Path):
+    path = tmp_path / "future.sqlite3"
+    with sqlite3.connect(path) as connection:
+        connection.execute("PRAGMA user_version = 99")
+
+    with pytest.raises(RuntimeError, match="newer than supported"):
+        LearningMemory(path)
+
+
+def test_overview_needs_repeated_evidence_before_calling_skill_weak(tmp_path: Path):
+    memory = make_memory(tmp_path)
+    catalog = {
+        "catalog_id": "test",
+        "title": "Test",
+        "reviewed_at": "2026-08-02",
+        "roadmap": {"optional": True, "stages": [], "sources": []},
+        "skills": [
+            {
+                "id": "ml.validation",
+                "title": "Validation",
+                "description": "Honest evaluation.",
+                "priority": "core",
+                "stage_id": "evaluation",
+                "prerequisites": [],
+            }
+        ],
+    }
+    memory.record_evidence(
+        skill_id="ml.validation",
+        axis="apply",
+        evidence_kind="rubric",
+        score=0.2,
+        confidence=0.7,
+        created_at=NOW,
+    )
+
+    assert memory.overview(catalog, now=NOW)["summary"]["weak_count"] == 0
+
+    memory.record_evidence(
+        skill_id="ml.validation",
+        axis="apply",
+        evidence_kind="rubric",
+        score=0.2,
+        confidence=0.7,
+        created_at=NOW + timedelta(minutes=1),
+    )
+    assert memory.overview(catalog, now=NOW)["summary"]["weak_count"] == 1

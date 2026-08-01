@@ -475,7 +475,8 @@ class LearningMemory:
             for skill in skills
             if skill["active_errors"]
             or any(
-                axis["level"] == "needs_work" for axis in skill["axes"].values()
+                axis["level"] == "needs_work" and axis["evidence_count"] >= 2
+                for axis in skill["axes"].values()
             )
         ]
         started = [skill["id"] for skill in skills if skill["evidence_count"] > 0]
