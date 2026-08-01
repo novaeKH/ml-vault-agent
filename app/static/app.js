@@ -36,13 +36,41 @@ const CALLOUT_TYPES = {
   success: { label: "Верно", icon: "✓" },
 };
 
+const LEARNING_AXES = [
+  { id: "recall", short: "R", label: "Recall" },
+  { id: "explain", short: "E", label: "Explain" },
+  { id: "apply", short: "A", label: "Apply" },
+  { id: "diagnose", short: "D", label: "Diagnose" },
+];
+
+const LEVEL_LABELS = {
+  unseen: "нет evidence",
+  needs_work: "нужно разобрать",
+  developing: "формируется",
+  reliable: "надёжно",
+  strong: "сильно",
+};
+
+const EVIDENCE_LABELS = {
+  deterministic: "автопроверка",
+  rubric: "проверка по рубрике",
+  agent: "наблюдение агента",
+  self_report: "самооценка",
+};
+
 const appState = {
   mode: "chat",
+  view: "chat",
   sessionId: crypto.randomUUID(),
   sending: false,
   status: null,
   messagesStarted: false,
   followOutput: true,
+  activeSkillId: null,
+  activeSkillTitle: "",
+  learningOverview: null,
+  selectedSkillId: null,
+  lastReview: null,
 };
 
 const elements = {
@@ -50,7 +78,19 @@ const elements = {
   welcome: document.querySelector("#welcome"),
   emptyStateMeta: document.querySelector("#empty-state-meta"),
   modeTitle: document.querySelector("#mode-title"),
+  learningButton: document.querySelector("#learning-button"),
+  learningBadge: document.querySelector("#learning-nav-badge"),
+  learningView: document.querySelector("#learning-view"),
+  learningStats: document.querySelector("#learning-stats"),
+  learningError: document.querySelector("#learning-error"),
+  learningRefresh: document.querySelector("#learning-refresh"),
+  roadmapList: document.querySelector("#roadmap-list"),
+  roadmapSources: document.querySelector("#roadmap-sources"),
+  roadmapSourceList: document.querySelector("#roadmap-source-list"),
+  skillPanel: document.querySelector("#skill-panel"),
   composer: document.querySelector("#composer"),
+  composerWrap: document.querySelector("#composer-wrap"),
+  composerHint: document.querySelector("#composer-hint"),
   input: document.querySelector("#message-input"),
   send: document.querySelector("#send-button"),
   newChat: document.querySelector("#new-chat-button"),
@@ -262,13 +302,399 @@ function renderMarkdown(markdown, target) {
 
 function selectMode(mode) {
   appState.mode = mode;
+  appState.view = "chat";
+  if (mode !== "tutor") {
+    appState.activeSkillId = null;
+    appState.activeSkillTitle = "";
+  }
+  updateComposerContext();
   document.querySelectorAll(".mode-button").forEach((button) => {
     button.classList.toggle("active", button.dataset.mode === mode);
   });
+  elements.learningButton.classList.remove("active");
+  elements.learningView.classList.add("hidden");
+  elements.conversation.classList.remove("hidden");
+  elements.composerWrap.classList.remove("hidden");
   const config = MODES[mode];
   elements.modeTitle.textContent = config.title;
   elements.input.placeholder = config.placeholder;
   elements.sidebar.classList.remove("open");
+}
+
+function showLearning() {
+  appState.view = "learning";
+  document.querySelectorAll(".mode-button").forEach((button) => {
+    button.classList.remove("active");
+  });
+  elements.learningButton.classList.add("active");
+  elements.conversation.classList.add("hidden");
+  elements.composerWrap.classList.add("hidden");
+  elements.jumpToLatest.classList.add("hidden");
+  elements.learningView.classList.remove("hidden");
+  elements.modeTitle.textContent = "Learning";
+  elements.sidebar.classList.remove("open");
+  loadLearningOverview(!appState.learningOverview);
+}
+
+function updateComposerContext() {
+  elements.composerHint.textContent = appState.activeSkillId
+    ? `Учебный контекст: ${appState.activeSkillTitle}`
+    : "Enter · Shift+Enter для новой строки";
+}
+
+async function apiJson(url, options = {}) {
+  const response = await fetch(url, options);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+  return payload;
+}
+
+function skillStatus(skill) {
+  if (skill.due) return "Пора повторить";
+  if (skill.active_errors?.length) return "Есть повторяющийся пробел";
+  if (!skill.evidence_count) return "Не начато";
+  return `${skill.evidence_count} ${pluralizeRu(skill.evidence_count, "наблюдение", "наблюдения", "наблюдений")}`;
+}
+
+function renderLearningOverview(payload) {
+  appState.learningOverview = payload;
+  elements.learningError.classList.toggle("hidden", payload.available);
+  if (!payload.available) {
+    elements.learningError.textContent = payload.error || "Учебный каталог недоступен.";
+    elements.roadmapList.innerHTML = `
+      <div class="learning-loading">Добавьте валидный _meta/LEARNING_CATALOG.md в vault.</div>
+    `;
+    elements.learningStats.replaceChildren();
+    elements.roadmapSources.classList.add("hidden");
+    return;
+  }
+
+  elements.learningError.classList.add("hidden");
+  const summary = payload.summary;
+  elements.learningStats.innerHTML = `
+    <div class="learning-stat"><strong>${summary.skills_started}</strong><small>начато из ${summary.skills_total}</small></div>
+    <div class="learning-stat"><strong>${summary.due_count}</strong><small>повторить</small></div>
+    <div class="learning-stat"><strong>${summary.weak_count}</strong><small>проверить</small></div>
+  `;
+
+  if (summary.due_count) {
+    elements.learningBadge.textContent = summary.due_count;
+    elements.learningBadge.classList.remove("hidden");
+  } else {
+    elements.learningBadge.classList.add("hidden");
+  }
+
+  const skills = new Map(payload.skills.map((skill) => [skill.id, skill]));
+  elements.roadmapList.innerHTML = payload.stages
+    .map((stage) => {
+      const cards = stage.skill_ids
+        .map((skillId) => skills.get(skillId))
+        .filter(Boolean)
+        .map((skill) => {
+          const dots = LEARNING_AXES.map((axis) => {
+            const level = skill.axes[axis.id]?.level || "unseen";
+            return `<span class="axis-dot ${level}" title="${axis.label}: ${LEVEL_LABELS[level]}">${axis.short}</span>`;
+          }).join("");
+          const active = skill.id === appState.selectedSkillId ? " active" : "";
+          return `
+            <button class="skill-card-button${active}" data-skill-id="${escapeHtml(skill.id)}" type="button">
+              <span>
+                <span class="skill-card-title">${escapeHtml(skill.title)}</span>
+                <span class="skill-card-status">${escapeHtml(skillStatus(skill))}</span>
+              </span>
+              <span class="axis-dots" aria-label="Грани навыка">${dots}</span>
+            </button>
+          `;
+        })
+        .join("");
+      return `
+        <section class="roadmap-stage">
+          <header class="roadmap-stage-header">
+            <strong>${escapeHtml(stage.title)}</strong>
+            <p>${escapeHtml(stage.description)}</p>
+          </header>
+          <div class="stage-skills">${cards}</div>
+        </section>
+      `;
+    })
+    .join("");
+
+  elements.roadmapList.querySelectorAll("[data-skill-id]").forEach((button) => {
+    button.addEventListener("click", () => loadLearningSkill(button.dataset.skillId));
+  });
+
+  elements.roadmapSourceList.innerHTML = payload.sources
+    .map(
+      (source) => `
+        <div class="roadmap-source-item">
+          <a href="${escapeHtml(source.url)}" target="_blank" rel="noreferrer">${escapeHtml(source.title)}</a>
+          <small>${escapeHtml(source.organization)} · ${escapeHtml(source.audience)}</small>
+        </div>
+      `,
+    )
+    .join("");
+  elements.roadmapSources.classList.toggle("hidden", payload.sources.length === 0);
+}
+
+async function loadLearningOverview(force = false) {
+  if (appState.learningOverview && !force) {
+    renderLearningOverview(appState.learningOverview);
+    return;
+  }
+  elements.learningRefresh.disabled = true;
+  try {
+    renderLearningOverview(await apiJson("/api/learning/overview"));
+  } catch (error) {
+    renderLearningOverview({ available: false, error: error.message });
+  } finally {
+    elements.learningRefresh.disabled = false;
+  }
+}
+
+function axisCards(profile) {
+  return LEARNING_AXES.map((axis) => {
+    const state = profile.axes[axis.id];
+    const score = state.score === null ? "—" : `${Math.round(state.score * 100)}%`;
+    return `
+      <div class="axis-card ${state.level}">
+        <b>${axis.label}</b>
+        <span>${score}</span>
+        <small>${escapeHtml(LEVEL_LABELS[state.level])} · ${state.evidence_count}</small>
+      </div>
+    `;
+  }).join("");
+}
+
+function evidenceHtml(events) {
+  if (!events.length) {
+    return `<div class="evidence-empty">Evidence пока нет. Обычный чат сюда ничего не записывает.</div>`;
+  }
+  return events
+    .map((event) => {
+      const dismissed = event.dismissed_at ? " dismissed" : "";
+      const action = event.dismissed_at ? "Вернуть" : "Не учитывать";
+      const date = new Date(event.created_at).toLocaleDateString("ru-RU", {
+        day: "2-digit",
+        month: "short",
+      });
+      return `
+        <div class="evidence-item${dismissed}">
+          <div>
+            <div class="evidence-meta">
+              <span>${escapeHtml(EVIDENCE_LABELS[event.evidence_kind] || event.evidence_kind)}</span>
+              <span>· ${escapeHtml(event.axis)}</span>
+              <span>· ${Math.round(event.score * 100)}%</span>
+              <span>· уверенность ${Math.round(event.confidence * 100)}%</span>
+              <span>· ${date}</span>
+            </div>
+            ${event.note ? `<p>${escapeHtml(event.note)}</p>` : ""}
+          </div>
+          <button class="evidence-action" data-event-id="${event.id}" data-dismissed="${Boolean(event.dismissed_at)}" type="button">${action}</button>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function reviewResultHtml(review) {
+  if (!review) return "";
+  const criteria = review.criteria
+    .map(
+      (criterion) =>
+        `<li><strong>${escapeHtml(criterion.id)}</strong>: ${Math.round(criterion.credit * 100)}%${criterion.comment ? ` — ${escapeHtml(criterion.comment)}` : ""}</li>`,
+    )
+    .join("");
+  return `
+    <div class="diagnostic-result">
+      <strong>Проверка по рубрике · ${Math.round(review.score * 100)}%</strong>
+      <div>${escapeHtml(review.feedback)}</div>
+      <ul>${criteria}</ul>
+    </div>
+  `;
+}
+
+function renderSkillDetail(payload) {
+  const { skill, profile, evidence } = payload;
+  const diagnostic = skill.diagnostics[0];
+  const notes = skill.note_paths
+    .map((path) => escapeHtml(path.split("/").pop().replace(/\.md$/i, "")))
+    .join(" · ");
+  const activeErrors = profile.active_errors.length
+    ? profile.active_errors.map((item) => escapeHtml(item.code)).join(", ")
+    : "нет повторяющихся ошибок";
+  const lastReview =
+    appState.lastReview?.skillId === skill.id ? appState.lastReview.review : null;
+  elements.skillPanel.innerHTML = `
+    <header class="skill-detail-header">
+      <span class="skill-detail-kicker">${escapeHtml(skill.stage_id)} · ${profile.evidence_count} evidence</span>
+      <h3>${escapeHtml(skill.title)}</h3>
+      <p>${escapeHtml(skill.description)}</p>
+      <div class="skill-actions">
+        <button class="learning-action primary" id="ask-tutor-for-skill" type="button">Разобрать с Tutor</button>
+        <button class="learning-action" id="back-to-roadmap" type="button">К карте</button>
+      </div>
+    </header>
+
+    <section class="skill-section">
+      <h4>Что должно получаться</h4>
+      <ul class="skill-outcomes">${skill.outcomes.map((outcome) => `<li>${escapeHtml(outcome)}</li>`).join("")}</ul>
+      <div class="skill-note-paths">В vault: ${notes}</div>
+    </section>
+
+    <section class="skill-section">
+      <h4>Четыре грани</h4>
+      <div class="axis-grid">${axisCards(profile)}</div>
+      <div class="skill-note-paths">Повторяющиеся наблюдения: ${activeErrors}</div>
+    </section>
+
+    <section class="skill-section">
+      <h4>Диагностика · ${escapeHtml(diagnostic.axis)}</h4>
+      <div class="diagnostic-card">
+        <p>${escapeHtml(diagnostic.prompt)}</p>
+        <details class="diagnostic-rubric">
+          <summary>Показать критерии проверки</summary>
+          <ul>${diagnostic.rubric.map((item) => `<li>${escapeHtml(item.description)} · ${Math.round(item.weight * 100)}%</li>`).join("")}</ul>
+        </details>
+        <textarea id="diagnostic-answer" maxlength="20000" placeholder="Сформулируйте ответ своими словами…"></textarea>
+        <div class="diagnostic-footer">
+          <small>Проверяет локальная модель. Запись имеет среднюю уверенность и её можно удалить.</small>
+          <button class="learning-action primary" id="submit-diagnostic" type="button">Проверить ответ</button>
+        </div>
+        <div id="diagnostic-result">${reviewResultHtml(lastReview)}</div>
+      </div>
+    </section>
+
+    <section class="skill-section">
+      <h4>Быстрая самооценка · ${escapeHtml(diagnostic.axis)}</h4>
+      <div class="self-rating">
+        <button class="self-rating-button" data-self-score="0.25" type="button">Пока не понимаю</button>
+        <button class="self-rating-button" data-self-score="0.6" type="button">Понимаю частично</button>
+        <button class="self-rating-button" data-self-score="0.85" type="button">Могу объяснить</button>
+      </div>
+    </section>
+
+    <section class="skill-section">
+      <h4>Из чего рассчитан прогресс</h4>
+      <div class="evidence-list">${evidenceHtml(evidence)}</div>
+    </section>
+  `;
+
+  document.querySelectorAll(".skill-card-button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.skillId === skill.id);
+  });
+  elements.skillPanel.querySelector("#ask-tutor-for-skill").addEventListener("click", () => {
+    startTutorForSkill(skill);
+  });
+  elements.skillPanel.querySelector("#back-to-roadmap").addEventListener("click", () => {
+    appState.selectedSkillId = null;
+    elements.skillPanel.innerHTML = `
+      <div class="skill-panel-empty"><span>ML</span><h3>Выберите навык</h3><p>Прогресс строится только по видимым evidence.</p></div>
+    `;
+    renderLearningOverview(appState.learningOverview);
+  });
+  elements.skillPanel.querySelector("#submit-diagnostic").addEventListener("click", () => {
+    submitDiagnostic(skill, diagnostic);
+  });
+  elements.skillPanel.querySelectorAll("[data-self-score]").forEach((button) => {
+    button.addEventListener("click", () => {
+      submitSelfReport(skill, diagnostic.axis, Number(button.dataset.selfScore), button);
+    });
+  });
+  elements.skillPanel.querySelectorAll("[data-event-id]").forEach((button) => {
+    button.addEventListener("click", () => toggleEvidence(button));
+  });
+}
+
+async function loadLearningSkill(skillId) {
+  appState.selectedSkillId = skillId;
+  elements.skillPanel.innerHTML = `<div class="learning-loading">Загружаю навык…</div>`;
+  if (appState.learningOverview?.available) renderLearningOverview(appState.learningOverview);
+  try {
+    renderSkillDetail(await apiJson(`/api/learning/skills/${encodeURIComponent(skillId)}`));
+  } catch (error) {
+    elements.skillPanel.innerHTML = `<div class="learning-error">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+async function submitDiagnostic(skill, diagnostic) {
+  const answer = elements.skillPanel.querySelector("#diagnostic-answer").value.trim();
+  const button = elements.skillPanel.querySelector("#submit-diagnostic");
+  const result = elements.skillPanel.querySelector("#diagnostic-result");
+  if (!answer) {
+    result.innerHTML = `<div class="diagnostic-result">Сначала напишите ответ своими словами.</div>`;
+    return;
+  }
+  button.disabled = true;
+  button.textContent = "Проверяю…";
+  try {
+    const payload = await apiJson("/api/learning/diagnose", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        skill_id: skill.id,
+        diagnostic_id: diagnostic.id,
+        answer,
+      }),
+    });
+    appState.lastReview = { skillId: skill.id, review: payload.review };
+    await loadLearningOverview(true);
+    await loadLearningSkill(skill.id);
+  } catch (error) {
+    result.innerHTML = `<div class="learning-error">${escapeHtml(error.message)}</div>`;
+    button.disabled = false;
+    button.textContent = "Проверить ответ";
+  }
+}
+
+async function submitSelfReport(skill, axis, score, button) {
+  button.disabled = true;
+  try {
+    await apiJson("/api/learning/evidence", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        skill_id: skill.id,
+        axis,
+        score,
+        activity_id: "dashboard-self-report",
+        note: "Явная самооценка из Learning dashboard.",
+      }),
+    });
+    toast("Самооценка добавлена как evidence с низкой уверенностью.");
+    await loadLearningOverview(true);
+    await loadLearningSkill(skill.id);
+  } catch (error) {
+    toast(error.message);
+    button.disabled = false;
+  }
+}
+
+async function toggleEvidence(button) {
+  const eventId = button.dataset.eventId;
+  const isDismissed = button.dataset.dismissed === "true";
+  button.disabled = true;
+  try {
+    const payload = await apiJson(`/api/learning/evidence/${eventId}/dismiss`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dismissed: !isDismissed }),
+    });
+    await loadLearningOverview(true);
+    await loadLearningSkill(payload.evidence.skill_id);
+  } catch (error) {
+    toast(error.message);
+    button.disabled = false;
+  }
+}
+
+function startTutorForSkill(skill) {
+  appState.activeSkillId = skill.id;
+  appState.activeSkillTitle = skill.title;
+  updateComposerContext();
+  selectMode("tutor");
+  elements.input.value = `Помоги мне разобраться с навыком «${skill.title}». Начни с короткой проверки моей текущей модели понимания, затем объясняй только обнаруженный пробел.`;
+  resizeInput();
+  elements.input.focus();
 }
 
 function ensureMessageList() {
@@ -408,6 +834,7 @@ async function sendMessage(text) {
         session_id: appState.sessionId,
         message,
         mode: appState.mode,
+        skill_id: appState.activeSkillId,
       }),
     });
     if (!response.ok) {
@@ -463,6 +890,10 @@ function resetChat() {
   appState.sessionId = crypto.randomUUID();
   appState.messagesStarted = false;
   appState.followOutput = true;
+  appState.activeSkillId = null;
+  appState.activeSkillTitle = "";
+  updateComposerContext();
+  selectMode("chat");
   document.querySelector(".message-list")?.remove();
   elements.welcome.classList.remove("hidden");
   elements.jumpToLatest.classList.add("hidden");
@@ -515,7 +946,12 @@ function fillSettings(status) {
 }
 
 function updateStatusUi(status) {
+  const previousVault = appState.status?.vault_path;
   appState.status = status;
+  if (previousVault && previousVault !== status.vault_path) {
+    appState.learningOverview = null;
+    appState.selectedSkillId = null;
+  }
   elements.vaultName.textContent = status.vault_name || "Vault не выбран";
   elements.vaultDot.className = `status-dot ${status.configured ? "ready" : "warning"}`;
   const { files, chunks } = status.index;
@@ -582,6 +1018,8 @@ async function requestReindex(force = false) {
 document.querySelectorAll(".mode-button").forEach((button) => {
   button.addEventListener("click", () => selectMode(button.dataset.mode));
 });
+elements.learningButton.addEventListener("click", showLearning);
+elements.learningRefresh.addEventListener("click", () => loadLearningOverview(true));
 
 elements.composer.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -643,6 +1081,8 @@ elements.settingsForm.addEventListener("submit", async (event) => {
     if (!response.ok) throw new Error(result.detail || "Не удалось сохранить.");
     closeSettings();
     toast("Настройки сохранены.");
+    appState.learningOverview = null;
+    appState.selectedSkillId = null;
     await fetchStatus();
   } catch (error) {
     toast(error.message);
@@ -650,6 +1090,7 @@ elements.settingsForm.addEventListener("submit", async (event) => {
 });
 
 selectMode("chat");
+updateComposerContext();
 resizeInput();
 fetchStatus();
 setInterval(fetchStatus, 12_000);

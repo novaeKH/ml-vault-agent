@@ -133,7 +133,7 @@ def _selected_skill(catalog: dict, skill_id: str) -> dict:
     return skill
 
 
-def _learning_prompt_context(catalog: dict, skill: dict) -> str:
+def _learning_prompt_context(skill: dict) -> str:
     profile = state.learning.skill_profile(skill["id"])
     axis_lines = []
     for axis, summary in profile["axes"].items():
@@ -191,7 +191,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="ML Vault Agent",
-    version="0.3.0",
+    version="0.4.0",
     docs_url="/api/docs",
     redoc_url=None,
     lifespan=lifespan,
@@ -442,7 +442,7 @@ def chat(request: ChatRequest) -> StreamingResponse:
     if request.skill_id:
         catalog = _load_catalog_or_http()
         selected_skill = _selected_skill(catalog, request.skill_id)
-        learning_context = _learning_prompt_context(catalog, selected_skill)
+        learning_context = _learning_prompt_context(selected_skill)
 
     previous_history = state.history(request.session_id)
     state.append(request.session_id, "user", message)

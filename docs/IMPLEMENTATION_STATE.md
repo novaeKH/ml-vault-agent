@@ -17,7 +17,7 @@ Last updated: 2026-08-02
 - [x] 1. Add and validate the ten-skill catalog and roadmap in the vault.
 - [x] 2. Implement deterministic SQLite evidence memory and review schedule.
 - [x] 3. Add learning API and optional skill context to chat.
-- [ ] 4. Build the learning dashboard and diagnostic interaction.
+- [x] 4. Build the learning dashboard and diagnostic interaction.
 - [ ] 5. Complete automated, integration and visual verification.
 - [ ] 6. Move verified branches to the laptop's primary folders and publish.
 
@@ -47,6 +47,12 @@ Checkpoint 2–3 add the versioned `learning.sqlite3` schema, transparent master
 review scheduling, reversible evidence, rubric parsing, five learning endpoints
 and opt-in `skill_id` context for chat. At this checkpoint the full suite reports
 42 passing tests.
+
+Checkpoint 4 adds the responsive Learning dashboard, roadmap/source provenance,
+skill detail, visible rubrics, self-report, evidence dismissal/restoration and
+the explicit handoff to Tutor. Desktop and a 390×844 viewport were checked in a
+real browser; the console had no errors. The suite now reports 45 passing tests,
+and lexical smoke cases return a source for all five existing modes.
 
 ## Verification commands
 
