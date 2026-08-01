@@ -47,3 +47,10 @@ def test_code_mode_is_a_theory_template_not_an_autonomous_builder():
 
     assert "Код здесь — иллюстрация теории" in prompt
     assert "не генерируй лишнюю инфраструктуру" in prompt
+
+
+def test_interviewer_first_turn_forbids_premature_feedback():
+    prompt = MODE_PROMPTS["interviewer"]
+
+    assert "Первый ход должен состоять только" in prompt
+    assert "запрещены `[!SUCCESS]`" in prompt

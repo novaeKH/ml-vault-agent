@@ -150,6 +150,23 @@ function sanitizeHtml(html) {
   return template.innerHTML;
 }
 
+function wrapLooseCallouts(target) {
+  const markerPattern =
+    /^\s*\[!(SUMMARY|NOTE|TIP|WARNING|EXAMPLE|QUESTION|SUCCESS)\](?:\s+|$)/i;
+  target.querySelectorAll("p").forEach((paragraph) => {
+    if (paragraph.closest("blockquote")) return;
+    if (!markerPattern.test(paragraph.textContent)) return;
+
+    const markerOnly = paragraph.textContent.replace(markerPattern, "").trim() === "";
+    const quote = document.createElement("blockquote");
+    paragraph.replaceWith(quote);
+    quote.append(paragraph);
+
+    const following = quote.nextElementSibling;
+    if (markerOnly && following?.tagName === "P") quote.append(following);
+  });
+}
+
 function enhanceCallouts(target) {
   target.querySelectorAll("blockquote").forEach((quote) => {
     const firstParagraph = quote.querySelector(":scope > p");
@@ -170,6 +187,9 @@ function enhanceCallouts(target) {
     const nextNode = markerNode.nextSibling;
     if (!markerNode.nodeValue.trim()) markerNode.remove();
     if (nextNode?.nodeName === "BR") nextNode.remove();
+    firstParagraph
+      .querySelectorAll("strong:empty, em:empty")
+      .forEach((node) => node.remove());
 
     const title = document.createElement("div");
     title.className = "callout-title";
@@ -191,6 +211,7 @@ function renderMarkdown(markdown, target) {
     window.marked?.parse(prepared, { gfm: true, breaks: true }) ??
     `<p>${escapeHtml(markdown)}</p>`;
   target.innerHTML = sanitizeHtml(rendered);
+  wrapLooseCallouts(target);
   enhanceCallouts(target);
 
   target.querySelectorAll(".math-slot").forEach((slot) => {
