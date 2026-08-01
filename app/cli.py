@@ -4,6 +4,7 @@ import argparse
 import sys
 
 from app.config import load_settings
+from app.generation import filter_low_relevance, profile_for_mode
 from app.index import HybridIndex
 from app.ollama_client import OllamaClient, OllamaError
 from app.prompts import build_context, system_prompt
@@ -53,7 +54,9 @@ def command_smoke(live: bool) -> int:
 
     failures = 0
     for mode, query in SMOKE_CASES:
-        results = index.search(query, settings, embedder, mode=mode)
+        results = filter_low_relevance(
+            index.search(query, settings, embedder, mode=mode)
+        )
         top = results[0].breadcrumb if results else "нет результатов"
         print(f"[{mode}] {query}\n  top source: {top}", flush=True)
         if not results:
@@ -75,12 +78,18 @@ def command_smoke(live: bool) -> int:
                 {"role": "user", "content": query},
             ]
             try:
+                profile = profile_for_mode(mode, settings.temperature)
                 answer = "".join(
                     client.chat_stream(
                         model=settings.chat_model,
                         messages=messages,
-                        temperature=settings.temperature,
+                        temperature=profile.temperature,
+                        num_ctx=profile.num_ctx,
                         num_predict=220,
+                        top_p=profile.top_p,
+                        top_k=profile.top_k,
+                        min_p=profile.min_p,
+                        repeat_penalty=profile.repeat_penalty,
                     )
                 ).strip()
             except OllamaError as error:

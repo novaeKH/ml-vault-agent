@@ -22,6 +22,12 @@ from app.config import (
     save_settings,
     validate_vault_path,
 )
+from app.generation import (
+    filter_low_relevance,
+    profile_for_mode,
+    retrieval_query,
+    trim_messages_to_context,
+)
 from app.index import HybridIndex
 from app.ollama_client import OllamaClient, OllamaError
 from app.prompts import build_context, system_prompt
@@ -122,7 +128,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="ML Vault Agent",
-    version="0.2.0",
+    version="0.3.0",
     docs_url="/api/docs",
     redoc_url=None,
     lifespan=lifespan,
@@ -249,17 +255,17 @@ def chat(request: ChatRequest) -> StreamingResponse:
 
     previous_history = state.history(request.session_id)
     state.append(request.session_id, "user", message)
-    retrieval_history = previous_history[-4:] + [{"role": "user", "content": message}]
-    retrieval_query = "\n".join(item["content"] for item in retrieval_history)
+    search_query = retrieval_query(previous_history, message)
     settings = state.settings
     client = state.client()
     embedder = client if client.available() else None
     results = state.index.search(
-        retrieval_query,
+        search_query,
         settings,
         embedder,
         mode=request.mode,
     )
+    results = filter_low_relevance(results)
     sources = [
         {
             "title": result.title,
@@ -276,11 +282,17 @@ def chat(request: ChatRequest) -> StreamingResponse:
         settings.context_chars,
     )
     recent_history = previous_history[-settings.history_messages :]
+    profile = profile_for_mode(request.mode, settings.temperature)
     messages = [
         {"role": "system", "content": system_prompt(request.mode, context)},
         *recent_history,
         {"role": "user", "content": message},
     ]
+    messages = trim_messages_to_context(
+        messages,
+        num_ctx=profile.num_ctx,
+        reserved_output_tokens=profile.num_predict,
+    )
 
     def generate() -> Iterator[str]:
         yield _ndjson({"type": "meta", "session_id": request.session_id})
@@ -290,7 +302,13 @@ def chat(request: ChatRequest) -> StreamingResponse:
             for token in client.chat_stream(
                 model=settings.chat_model,
                 messages=messages,
-                temperature=settings.temperature,
+                temperature=profile.temperature,
+                num_ctx=profile.num_ctx,
+                num_predict=profile.num_predict,
+                top_p=profile.top_p,
+                top_k=profile.top_k,
+                min_p=profile.min_p,
+                repeat_penalty=profile.repeat_penalty,
             ):
                 answer_parts.append(token)
                 yield _ndjson({"type": "token", "content": token})

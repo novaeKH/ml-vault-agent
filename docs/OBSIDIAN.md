@@ -62,7 +62,7 @@ aliases:
 - `type: concept` и `type: deep-dive` → база знаний;
 - `type: interview` → база для режима интервью;
 - `type: practice` + `rag: include` → задачи и подсказки для Practice;
-- `type: solution` + `rag: include` → решения для Code Tutor;
+- `type: solution` + `rag: include` → решения и шаблоны для Templates;
 - другой `type` + `rag: include` → обычная база знаний;
 - `rag: exclude` или `status: archived` → не индексировать.
 

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ml-vault-agent"
-version = "0.2.0"
-description = "A local, read-only RAG tutor for ML, Python, and algorithms in Obsidian"
+version = "0.3.0"
+description = "A local, theory-first ML tutor backed by an Obsidian vault"
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
 dependencies = [

@@ -90,6 +90,10 @@ class OllamaClient:
         temperature: float,
         num_ctx: int = 16_384,
         num_predict: int = 1_600,
+        top_p: float = 0.9,
+        top_k: int = 30,
+        min_p: float = 0.0,
+        repeat_penalty: float = 1.05,
     ) -> Iterator[str]:
         payload = {
             "model": model,
@@ -101,7 +105,10 @@ class OllamaClient:
                 "temperature": temperature,
                 "num_ctx": num_ctx,
                 "num_predict": num_predict,
-                "repeat_penalty": 1.05,
+                "top_p": top_p,
+                "top_k": top_k,
+                "min_p": min_p,
+                "repeat_penalty": repeat_penalty,
             },
         }
         with self._request("/api/chat", payload) as response:

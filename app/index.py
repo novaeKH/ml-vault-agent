@@ -16,7 +16,7 @@ from app.ollama_client import OllamaError
 from app.vault import Chunk, chunks_for_note, iter_markdown, read_note, tokenize
 
 
-INDEX_FORMAT_VERSION = "2"
+INDEX_FORMAT_VERSION = "3"
 
 
 class Embedder(Protocol):

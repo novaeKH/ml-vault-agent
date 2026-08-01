@@ -306,6 +306,7 @@ button {
 }
 
 .main-panel {
+  position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
@@ -353,6 +354,31 @@ button {
   padding: 30px clamp(24px, 7vw, 96px);
   overflow-y: auto;
   scroll-behavior: smooth;
+}
+
+.jump-to-latest {
+  position: absolute;
+  right: clamp(24px, 7vw, 96px);
+  bottom: 88px;
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border: 1px solid rgba(29, 111, 84, 0.22);
+  border-radius: 999px;
+  color: var(--green-dark);
+  background: rgba(251, 250, 246, 0.96);
+  box-shadow: 0 8px 24px rgba(19, 32, 25, 0.13);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 750;
+  backdrop-filter: blur(8px);
+}
+
+.jump-to-latest:hover {
+  border-color: rgba(29, 111, 84, 0.48);
+  background: var(--white);
 }
 
 .welcome {
@@ -1108,6 +1134,11 @@ button {
 
   .composer-wrap {
     padding: 10px 14px 13px;
+  }
+
+  .jump-to-latest {
+    right: 14px;
+    bottom: 78px;
   }
 }
 

@@ -20,9 +20,9 @@ const MODES = {
     placeholder: "Тема, уровень или ваша попытка решения…",
   },
   code: {
-    label: "Code Tutor",
-    title: "Code Tutor",
-    placeholder: "Вставьте код или опишите задачу…",
+    label: "Templates",
+    title: "Code Templates",
+    placeholder: "Какую ML-идею показать компактным шаблоном?",
   },
 };
 
@@ -42,6 +42,7 @@ const appState = {
   sending: false,
   status: null,
   messagesStarted: false,
+  followOutput: true,
 };
 
 const elements = {
@@ -71,6 +72,7 @@ const elements = {
   toastRegion: document.querySelector("#toast-region"),
   sidebar: document.querySelector("#sidebar"),
   mobileMenu: document.querySelector("#mobile-menu"),
+  jumpToLatest: document.querySelector("#jump-to-latest"),
 };
 
 function toast(message) {
@@ -316,8 +318,27 @@ function renderSources(container, sources) {
   container.append(details);
 }
 
-function scrollToBottom() {
+function isNearConversationBottom() {
+  const remaining =
+    elements.conversation.scrollHeight -
+    elements.conversation.scrollTop -
+    elements.conversation.clientHeight;
+  return remaining <= 96;
+}
+
+function updateJumpToLatest() {
+  const shouldShow = appState.messagesStarted && !isNearConversationBottom();
+  elements.jumpToLatest.classList.toggle("hidden", !shouldShow);
+}
+
+function scrollToBottom(force = false) {
+  if (force) appState.followOutput = true;
+  if (!appState.followOutput) {
+    updateJumpToLatest();
+    return;
+  }
   elements.conversation.scrollTop = elements.conversation.scrollHeight;
+  elements.jumpToLatest.classList.add("hidden");
 }
 
 async function sendMessage(text) {
@@ -330,6 +351,7 @@ async function sendMessage(text) {
   }
 
   appState.sending = true;
+  appState.followOutput = true;
   elements.send.disabled = true;
   addUserMessage(message);
   const assistant = addAssistantMessage();
@@ -341,15 +363,20 @@ async function sendMessage(text) {
 
   let answer = "";
   let sources = [];
-  let renderQueued = false;
+  let renderTimer = null;
+  let lastRenderedAt = 0;
+  const renderAnswer = () => {
+    renderMarkdown(answer, content);
+    lastRenderedAt = Date.now();
+    scrollToBottom();
+  };
   const scheduleRender = () => {
-    if (renderQueued) return;
-    renderQueued = true;
-    requestAnimationFrame(() => {
-      renderMarkdown(answer, content);
-      renderQueued = false;
-      scrollToBottom();
-    });
+    if (renderTimer !== null) return;
+    const delay = Math.max(0, 80 - (Date.now() - lastRenderedAt));
+    renderTimer = setTimeout(() => {
+      renderTimer = null;
+      renderAnswer();
+    }, delay);
   };
 
   try {
@@ -386,11 +413,14 @@ async function sendMessage(text) {
       }
       if (done) break;
     }
+    if (renderTimer !== null) clearTimeout(renderTimer);
+    renderTimer = null;
     renderMarkdown(answer || "Ответ не получен.", content);
     renderSources(sourceContainer, sources);
   } catch (error) {
     content.innerHTML = `<div class="error-card">${escapeHtml(error.message)}</div>`;
   } finally {
+    if (renderTimer !== null) clearTimeout(renderTimer);
     appState.sending = false;
     elements.send.disabled = false;
     scrollToBottom();
@@ -411,8 +441,10 @@ function resetChat() {
   }).catch(() => {});
   appState.sessionId = crypto.randomUUID();
   appState.messagesStarted = false;
+  appState.followOutput = true;
   document.querySelector(".message-list")?.remove();
   elements.welcome.classList.remove("hidden");
+  elements.jumpToLatest.classList.add("hidden");
   elements.input.value = "";
   resizeInput();
   elements.input.focus();
@@ -543,6 +575,16 @@ elements.input.addEventListener("keydown", (event) => {
   }
 });
 
+elements.conversation.addEventListener(
+  "scroll",
+  () => {
+    appState.followOutput = isNearConversationBottom();
+    updateJumpToLatest();
+  },
+  { passive: true },
+);
+elements.jumpToLatest.addEventListener("click", () => scrollToBottom(true));
+
 elements.newChat.addEventListener("click", resetChat);
 elements.settingsButton.addEventListener("click", openSettings);
 elements.closeSettings.addEventListener("click", closeSettings);
@@ -589,4 +631,4 @@ elements.settingsForm.addEventListener("submit", async (event) => {
 selectMode("chat");
 resizeInput();
 fetchStatus();
-setInterval(fetchStatus, 6000);
+setInterval(fetchStatus, 12_000);
