@@ -18,8 +18,8 @@ Last updated: 2026-08-02
 - [x] 2. Implement deterministic SQLite evidence memory and review schedule.
 - [x] 3. Add learning API and optional skill context to chat.
 - [x] 4. Build the learning dashboard and diagnostic interaction.
-- [ ] 5. Complete automated, integration and visual verification.
-- [ ] 6. Move verified branches to the laptop's primary folders and publish.
+- [x] 5. Complete automated, integration and visual verification.
+- [x] 6. Move verified branches to the laptop's primary folders and publish.
 
 Each checked step must end in a Git commit in the affected repository. Do not
 publish an incomplete checkpoint to GitHub.
@@ -58,10 +58,40 @@ and lexical smoke cases return a source for all five existing modes.
 
 ```bash
 cd /Users/kheichiev/Documents/Codex/2026-07-31/cvj/outputs/ml-vault-agent
-python3 -m pytest
-python3 -m app.learning_catalog \
+PYTHONPATH=. /Users/kheichiev/projects/ml-vault-agent/.venv/bin/python -m pytest
+PYTHONPATH=. /Users/kheichiev/projects/ml-vault-agent/.venv/bin/python \
+  -m app.learning_catalog \
   --vault /Users/kheichiev/Documents/Codex/2026-07-31/cvj/outputs/My_brain_v2
 ```
 
-Frontend visual checks and the exact production handoff commands will be added
-at checkpoint 5 after their final form is known.
+## Final verification and handoff
+
+Completed on 2026-08-02:
+
+- 47 automated tests passed from the primary app folder;
+- catalog validation reported 10 skills, 4 stages and 10 diagnostics;
+- JavaScript syntax validation passed;
+- all five lexical smoke cases returned a relevant source;
+- desktop Learning, skill detail, self-report, evidence dismissal and Tutor
+  handoff were tested in a real browser;
+- the 390×844 mobile layout collapsed to one column with a static skill panel;
+- browser console contained no errors;
+- GitHub Actions passed on `macos-latest` and `windows-latest`, including the
+  Windows PowerShell launcher parse and setup smoke test;
+- both remote repositories contained only `main`, so no remote branch deletion
+  was necessary.
+
+Primary folders now use the verified commits through a fast-forward merge:
+
+```bash
+cd /Users/kheichiev/projects/ml-vault-agent
+git status --short --branch
+
+cd /Users/kheichiev/Desktop/My_brain_v2
+git status --short --branch
+```
+
+Both should report `main...origin/main` with no changed files after the final
+status commit is pushed. The isolated `learning-system-v1` local branches are
+kept as recovery pointers; they are not GitHub branches and can be deleted later
+without affecting `main`.
